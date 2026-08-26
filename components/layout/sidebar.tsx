@@ -54,7 +54,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'flex h-full flex-col border-r border-border bg-card transition-[width] duration-200',
+        'flex h-screen shrink-0 flex-col overflow-hidden border-r border-border bg-card transition-[width] duration-200',
         collapsed ? 'w-[68px]' : 'w-60'
       )}
     >
@@ -76,7 +76,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto scrollbar-thin px-2 py-3">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain scrollbar-thin px-2 py-3">
         {navItems.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + '/');
