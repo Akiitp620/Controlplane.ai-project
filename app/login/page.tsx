@@ -210,23 +210,68 @@ export default function LoginPage() {
               {/* =================================================
                   BLUE AURA BEHIND LOGIN CARD
               ================================================= */}
-              <div className="pointer-events-none absolute -inset-10 -z-10 rounded-[44px] bg-blue-500/20 blur-3xl" />
+             <div
+  className="
+    pointer-events-none absolute -inset-10 -z-10
+    rounded-[44px]
+    bg-blue-500/20
+    blur-3xl
+    transition-all duration-500
+    group-hover:bg-blue-500/30
+    group-hover:blur-[70px]
+  "
+/>
 
-              <div className="pointer-events-none absolute -inset-5 -z-10 rounded-[34px] bg-blue-400/10 blur-2xl" />
+              <div
+  className="
+    pointer-events-none absolute -inset-4 -z-10
+    rounded-[34px]
+    bg-blue-400/10
+    blur-2xl
+    transition-all duration-500
+    group-hover:bg-blue-400/20
+    group-hover:blur-3xl
+  "
+/>
 
               <div className="pointer-events-none absolute -inset-1 -z-10 rounded-[26px] bg-blue-500/[0.07] blur-xl" />
 
               {/* =================================================
                   LOGIN CARD
               ================================================= */}
-              <div className="relative rounded-[22px] border border-white/[0.10] bg-[#0b1018]/95 p-7 shadow-[0_30px_100px_rgba(37,99,235,0.18)] backdrop-blur-xl sm:p-8">
-
+              <div
+  className="
+    group relative rounded-[22px]
+    border border-white/[0.10]
+    bg-[#0b1018]/95
+    p-7
+    backdrop-blur-xl
+    shadow-[0_30px_100px_rgba(37,99,235,0.18)]
+    transition-all duration-300 ease-out
+    hover:-translate-y-1
+    hover:border-blue-400/30
+    hover:shadow-[0_35px_110px_rgba(37,99,235,0.30)]
+    sm:p-8
+  "
+>
                 {/* Card Header */}
                 <div className="text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-400/15 bg-blue-400/[0.07] text-blue-300">
-                    <ShieldCheck className="h-5 w-5" />
-                  </div>
-
+                  <div
+  className="
+    mx-auto flex h-12 w-12 items-center justify-center
+    rounded-2xl
+    border border-blue-400/15
+    bg-blue-400/[0.07]
+    text-blue-300
+    transition-all duration-300
+    group-hover:scale-110
+    group-hover:border-blue-400/30
+    group-hover:bg-blue-400/[0.12]
+    group-hover:shadow-[0_0_25px_rgba(59,130,246,0.25)]
+  "
+>
+  <ShieldCheck className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+</div>
                   <h2 className="mt-6 text-2xl font-semibold tracking-[-0.025em] text-white">
                     Welcome back
                   </h2>
@@ -373,15 +418,27 @@ export default function LoginPage() {
                 </button>
 
                 {/* Request Access */}
-                <p className="mt-6 text-center text-xs text-white/35">
-                  Don&apos;t have access?{' '}
-                  <button
-                    type="button"
-                    className="font-semibold text-blue-400 transition-colors hover:text-blue-300"
-                  >
-                    Request access
-                  </button>
-                </p>
+               <div className="mt-6 space-y-3 text-center">
+  <p className="text-xs text-white/35">
+    Don&apos;t have an account?{' '}
+    <Link
+      href="/register"
+      className="font-semibold text-blue-400 transition-colors hover:text-blue-300"
+    >
+      Create account
+    </Link>
+  </p>
+
+  <p className="text-[11px] text-white/25">
+    Need enterprise access?{' '}
+    <button
+      type="button"
+      className="font-semibold text-white/45 transition-colors hover:text-white/70"
+    >
+      Request access
+    </button>
+  </p>
+</div>
               </div>
 
               {/* Security */}
