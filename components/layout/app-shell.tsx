@@ -26,7 +26,8 @@ export function AppShell({
 
   const isPublicRoute =
     pathname === '/' ||
-    pathname === '/login';
+    pathname === '/login' ||
+    pathname === '/register';
 
   if (isPublicRoute) {
     return <>{children}</>;
