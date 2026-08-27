@@ -1,5 +1,5 @@
 'use client';
-
+import { useTheme } from 'next-themes';
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -13,6 +13,8 @@ import {
   HelpCircle,
   LogOut,
   Sliders,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -40,6 +42,7 @@ interface TopbarProps {
 
 export function Topbar({ onMobileMenu }: TopbarProps) {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
 
   const [pendingCount, setPendingCount] =
     React.useState(0);
@@ -89,6 +92,26 @@ export function Topbar({ onMobileMenu }: TopbarProps) {
           RIGHT ACTIONS
       ===================================================== */}
       <div className="ml-auto flex items-center gap-2">
+
+        <Button
+  variant="ghost"
+  size="icon"
+  aria-label="Toggle theme"
+  onClick={() =>
+    setTheme(theme === 'dark' ? 'light' : 'dark')
+  }
+  className="relative"
+>
+  {theme === 'dark' ? (
+    <Sun className="h-4.5 w-4.5" />
+  ) : (
+    <Moon className="h-4.5 w-4.5" />
+  )}
+
+  <span className="sr-only">
+    Toggle dark mode
+  </span>
+</Button>
         {/* ===================================================
             ENVIRONMENT
         =================================================== */}
