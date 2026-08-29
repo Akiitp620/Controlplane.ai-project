@@ -1,14 +1,78 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/common/status-badge';
-import { policies, useCaseList } from '@/lib/mock-data';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
+import type { Policy, UseCase } from '@/types';
 import { ScrollText, ArrowRight } from 'lucide-react';
 
 export default function PoliciesPage() {
+  const [policyList, setPolicyList] = React.useState<Policy[]>([]);
+  const [useCaseList, setUseCaseList] = React.useState<UseCase[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    const headers: HeadersInit = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+
+    Promise.all([
+      fetch(`${apiUrl}/api/policies`, { headers }),
+      fetch(`${apiUrl}/api/use-cases`, { headers }),
+    ])
+      .then(async ([policiesResponse, useCasesResponse]) => {
+        if (!policiesResponse.ok || !useCasesResponse.ok) {
+          throw new Error('Unable to load policies and use cases.');
+        }
+
+        const [backendPolicies, backendUseCases] = await Promise.all([
+          policiesResponse.json(),
+          useCasesResponse.json(),
+        ]);
+
+        const loadedUseCases: UseCase[] = backendUseCases.map((useCase: Omit<UseCase, 'id' | 'recentEvaluations'> & { useCaseId: string }) => ({
+          ...useCase,
+          id: useCase.useCaseId,
+          recentEvaluations: [],
+        }));
+
+        const loadedPolicies: Policy[] = backendPolicies.map((policy: Omit<Policy, 'id' | 'version' | 'lastUpdated' | 'consequenceThreshold' | 'latencyBudget' | 'allowedActions' | 'rules'> & { id: number; version?: string; updatedAt?: string }) => {
+          const useCase = loadedUseCases.find((item) => item.id === policy.useCase);
+          return {
+            ...policy,
+            id: String(policy.id),
+            version: policy.version ?? '1.0',
+            lastUpdated: policy.updatedAt ?? new Date().toISOString(),
+            consequenceThreshold: 'HIGH',
+            latencyBudget: useCase?.latencyBudget ?? 'MEDIUM',
+            allowedActions: ['ALLOW', 'MODIFY', 'HUMAN_REVIEW', 'BLOCK'],
+            rules: [],
+          };
+        });
+
+        setUseCaseList(loadedUseCases);
+        setPolicyList(loadedPolicies);
+      })
+      .catch((requestError: Error) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (error) {
+    return <ErrorState title="Policies unavailable" description={error} />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -38,7 +102,7 @@ export default function PoliciesPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {policies.map((policy) => {
+            {policyList.map((policy) => {
               const uc = useCaseList.find((u) => u.id === policy.useCase);
               return (
                 <tr key={policy.id} className="hover:bg-accent/30">
@@ -84,7 +148,7 @@ export default function PoliciesPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {policies.map((policy) => {
+        {policyList.map((policy) => {
           const uc = useCaseList.find((u) => u.id === policy.useCase);
           return (
             <Link key={policy.id} href={`/policies/${policy.id}`}>

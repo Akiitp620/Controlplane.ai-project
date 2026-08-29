@@ -54,11 +54,59 @@ export default function RegisterPage() {
 
     setIsSubmitting(true);
 
-    // Demo-only registration flow.
-    // Replace this section with real authentication later.
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name,
+            email,
+            password,
+          }),
+        }
+      );
 
-    window.location.href = '/dashboard';
+      const text = await response.text();
+
+      console.log('Register status:', response.status);
+      console.log('Register response:', text);
+
+      let data = null;
+
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message || text || `Registration failed (${response.status})`
+        );
+      }
+
+      if (!data) {
+        throw new Error('Backend returned an empty response');
+      }
+
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Registration error:', error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to create account'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

@@ -17,10 +17,7 @@ import { DecisionReasoningPanel } from '@/components/evaluation/decision-reasoni
 import { DecisionPipeline } from '@/components/evaluation/decision-pipeline';
 import { EmptyState } from '@/components/common/empty-state';
 
-import {
-  evaluateResponse,
-  storeEvaluation,
-} from '@/lib/mock-data';
+
 
 import type {
   EvaluationResult,
@@ -48,24 +45,204 @@ export function EvaluationWorkspace({
   const [result, setResult] =
     React.useState<EvaluationResult | null>(null);
 
-  const handleEvaluate = (
-    useCase: UseCaseId,
-    response: string,
-  ) => {
-    setStatus('evaluating');
-    setResult(null);
+const generateEvaluationId = () => {
+  return `EVAL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
 
-    setTimeout(() => {
-      const evalResult = evaluateResponse(
-        useCase,
-        response,
-      );
+const transformBackendResponse = (
+  backendData: any,
+  useCase: UseCaseId,
+  response: string
+): EvaluationResult => {
+  const evaluationId = backendData.assessmentId
+    ? `EVAL-${backendData.assessmentId}`
+    : generateEvaluationId();
+  const timestamp = new Date().toISOString();
 
-      storeEvaluation(evalResult);
-      setResult(evalResult);
-      setStatus('success');
-    }, 1200);
+  const riskLevel = backendData.overallRiskScore > 70
+    ? 'CRITICAL'
+    : backendData.overallRiskScore > 50
+      ? 'HIGH'
+      : backendData.overallRiskScore > 30
+        ? 'MEDIUM'
+        : 'LOW';
+
+  const decisionMap: Record<string, EvaluationResult['decision']> = {
+    PASS: 'ALLOW',
+    WARN: 'HUMAN_REVIEW',
+    ESCALATE: 'HUMAN_REVIEW',
+    MODIFY: 'MODIFY',
+    ALLOW: 'ALLOW',
+    HUMAN_REVIEW: 'HUMAN_REVIEW',
+    BLOCK: 'BLOCK',
   };
+  const decision = decisionMap[backendData.decision] || 'HUMAN_REVIEW';
+
+  // Create findings from individual scores
+  const findings: Record<string, 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'> = {
+    hallucination: backendData.hallucinationScore > 70 ? 'HIGH' : backendData.hallucinationScore > 40 ? 'MEDIUM' : 'LOW',
+    privacy: backendData.privacyScore > 70 ? 'HIGH' : backendData.privacyScore > 40 ? 'MEDIUM' : 'LOW',
+    bias: backendData.biasScore > 70 ? 'HIGH' : backendData.biasScore > 40 ? 'MEDIUM' : 'LOW',
+    safety: backendData.overallRiskScore > 70 ? 'HIGH' : backendData.overallRiskScore > 40 ? 'MEDIUM' : 'LOW',
+    responsibility: backendData.contextRiskScore > 70 ? 'HIGH' : backendData.contextRiskScore > 40 ? 'MEDIUM' : 'LOW',
+  };
+
+  // Create risk details from scores
+  const riskDetails = [
+    {
+      dimension: 'hallucination' as const,
+      severity: findings.hallucination,
+      confidence: backendData.hallucinationScore,
+      explanation: `Hallucination risk score: ${backendData.hallucinationScore}`,
+    },
+    {
+      dimension: 'privacy' as const,
+      severity: findings.privacy,
+      confidence: backendData.privacyScore,
+      explanation: `Privacy risk score: ${backendData.privacyScore}`,
+    },
+    {
+      dimension: 'bias' as const,
+      severity: findings.bias,
+      confidence: backendData.biasScore,
+      explanation: `Bias risk score: ${backendData.biasScore}`,
+    },
+    {
+      dimension: 'responsibility' as const,
+      severity: findings.responsibility,
+      confidence: backendData.contextRiskScore,
+      explanation: `Context risk score: ${backendData.contextRiskScore}`,
+    },
+  ];
+
+  // Create pipeline stages
+  const pipeline = [
+    {
+      key: 'context' as const,
+      label: 'Context',
+      status: backendData.contextRiskScore < 50 ? ('pass' as const) : ('warn' as const),
+      detail: `Context risk: ${backendData.contextRiskScore}`,
+    },
+    {
+      key: 'risk' as const,
+      label: 'Risk Analysis',
+      status: backendData.overallRiskScore < 50 ? ('pass' as const) : ('warn' as const),
+      detail: `Overall risk: ${backendData.overallRiskScore}`,
+    },
+    {
+      key: 'evidence' as const,
+      label: 'Evidence',
+      status: backendData.evidence?.length ? ('warn' as const) : ('neutral' as const),
+      detail: backendData.evidence?.length ? `${backendData.evidence.length} evidence source(s) retrieved` : 'No evidence retrieved',
+    },
+    {
+      key: 'consequence' as const,
+      label: 'Consequence',
+      status: 'pass' as const,
+      detail: 'Impact assessed',
+    },
+    {
+      key: 'policy' as const,
+      label: 'Policy',
+      status: decision === 'ALLOW' ? ('pass' as const) : ('warn' as const),
+      detail: `Policy decision: ${backendData.decision}`,
+    },
+    {
+      key: 'autonomy' as const,
+      label: 'Autonomy',
+      status: decision === 'ALLOW' ? ('pass' as const) : ('warn' as const),
+      detail: `Autonomy: ${backendData.decision}`,
+    },
+  ];
+
+  return {
+    evaluationId,
+    useCase,
+    response,
+    timestamp,
+    riskLevel,
+    findings,
+    riskDetails,
+    evidence: {
+      status: backendData.hallucinationScore >= 80 ? 'CONTRADICTED' : backendData.evidence?.length ? 'VERIFIED' : 'UNKNOWN',
+      sources: (backendData.evidence || []).map((source: string, index: number) => ({
+        id: String(index + 1),
+        title: `Backend evidence ${index + 1}`,
+        status: backendData.hallucinationScore >= 80 ? 'CONTRADICTED' : 'VERIFIED',
+        claim: response,
+        sourceSays: source,
+      })),
+    },
+    consequence: 'MEDIUM' as const,
+    consequenceImpact: backendData.reason || 'Evaluation completed',
+    policy: {
+      id: '1',
+      name: 'Default Policy',
+      version: '1.0',
+      status: 'ACTIVE' as const,
+    },
+    decision,
+    reasoning: [backendData.reason || 'No additional reasoning provided'],
+    pipeline,
+    humanReview: backendData.decision === 'ESCALATE' || backendData.decision === 'WARN'
+      ? { status: 'PENDING', reason: backendData.reason }
+      : undefined,
+  };
+};
+
+const handleEvaluate = async (
+  useCase: UseCaseId,
+  response: string,
+) => {
+  setStatus('evaluating');
+  setResult(null);
+
+  try {
+    const token = localStorage.getItem('token');
+
+    const apiResponse = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/analyze`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token
+            ? { Authorization: `Bearer ${token}` }
+            : {}),
+        },
+        body: JSON.stringify({
+          applicationId: 1,
+          userRequest: response,
+          aiResponse: response,
+        }),
+      },
+    );
+
+    const text = await apiResponse.text();
+
+    console.log('Analyze status:', apiResponse.status);
+    console.log('Analyze response:', text);
+
+    if (!apiResponse.ok) {
+      throw new Error(
+        text || `Analysis failed (${apiResponse.status})`,
+      );
+    }
+
+    const data = JSON.parse(text);
+
+    console.log('Analyze data:', data);
+
+    // Transform backend response to frontend EvaluationResult format
+    const transformedResult = transformBackendResponse(data, useCase, response);
+
+    setResult(transformedResult);
+    setStatus('success');
+  } catch (error) {
+    console.error('Analyze error:', error);
+    setStatus('error');
+  }
+};
 
   const compactGrid = compact
     ? 'grid items-start gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]'

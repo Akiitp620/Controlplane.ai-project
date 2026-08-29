@@ -9,12 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/common/status-badge';
 import { EmptyState } from '@/components/common/empty-state';
-import {
-  getPendingReviews,
-  updateReviewStatus,
-  useCaseList,
-} from '@/lib/mock-data';
-import type { EvaluationResult } from '@/types';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -24,28 +20,61 @@ import {
   Info,
 } from 'lucide-react';
 
+interface BackendReview {
+  id: number;
+  riskAssessmentId: number;
+  decision?: string;
+  modifiedResponse?: string;
+  comments?: string;
+  status: string;
+  createdAt: string;
+  reviewedAt?: string;
+}
+
 export default function ReviewPage() {
-  const [reviews, setReviews] = React.useState<EvaluationResult[]>([]);
+  const [reviews, setReviews] = React.useState<BackendReview[]>([]);
   const [reasons, setReasons] = React.useState<Record<string, string>>({});
-  const [resolved, setResolved] = React.useState<
-    Record<string, EvaluationResult['humanReview']>
-  >({});
+  const [resolved, setResolved] = React.useState<BackendReview[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setReviews(getPendingReviews());
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    fetch(`${apiUrl}/api/human-reviews`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load human reviews.');
+        const data: BackendReview[] = await response.json();
+        setReviews(data.filter((review) => review.status === 'PENDING'));
+      })
+      .catch((requestError: Error) => setError(requestError.message))
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleAction = (
-    id: string,
-    status: 'APPROVED' | 'REJECTED' | 'OVERRIDDEN'
-  ) => {
-    const reason = reasons[id]?.trim();
-    const updated = updateReviewStatus(id, status, 'Risk Admin', reason);
-    if (updated) {
-      setResolved((prev) => ({ ...prev, [id]: updated.humanReview }));
-      setReviews((prev) => prev.filter((r) => r.evaluationId !== id));
+  const handleAction = async (review: BackendReview, action: 'approve' | 'reject' | 'modify') => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    const response = await fetch(`${apiUrl}/api/human-reviews/${review.id}/${action}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ comments: reasons[String(review.id)]?.trim() }),
+    });
+    if (!response.ok) {
+      setError(`Unable to ${action} review.`);
+      return;
     }
+    const updated: BackendReview = await response.json();
+    setResolved((prev) => [updated, ...prev]);
+    setReviews((prev) => prev.filter((item) => item.id !== review.id));
   };
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState title="Reviews unavailable" description={error} />;
 
   return (
     <div className="space-y-6">
@@ -71,7 +100,7 @@ export default function ReviewPage() {
         </CardContent>
       </Card>
 
-      {reviews.length === 0 && Object.keys(resolved).length === 0 ? (
+      {reviews.length === 0 && resolved.length === 0 ? (
         <EmptyState
           title="No reviews pending"
           description="There are no evaluations currently requiring human review. Run an evaluation with a high-consequence scenario to generate a review case."
@@ -86,9 +115,8 @@ export default function ReviewPage() {
       ) : (
         <div className="space-y-4">
           {reviews.map((review) => {
-            const uc = useCaseList.find((u) => u.id === review.useCase);
             return (
-              <Card key={review.evaluationId}>
+              <Card key={review.id}>
                 <CardHeader>
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -97,11 +125,11 @@ export default function ReviewPage() {
                       </div>
                       <div>
                         <CardTitle className="text-base">
-                          {review.evaluationId}
+                          Review #{review.id}
                         </CardTitle>
                         <div className="text-xs text-muted-foreground">
-                          {uc?.name} ·{' '}
-                          {new Date(review.timestamp).toLocaleString('en-US', {
+                          Risk assessment #{review.riskAssessmentId} ·{' '}
+                          {new Date(review.createdAt).toLocaleString('en-US', {
                             dateStyle: 'short',
                             timeStyle: 'short',
                           })}
@@ -109,7 +137,7 @@ export default function ReviewPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <StatusBadge decision={review.decision}>
+                      <StatusBadge tone="review">
                         HUMAN REVIEW
                       </StatusBadge>
                     </div>
@@ -121,32 +149,31 @@ export default function ReviewPage() {
                       AI Response
                     </div>
                     <p className="mt-1 whitespace-pre-wrap font-mono text-sm text-foreground">
-                      {review.response}
+                      This review is linked to risk assessment #{review.riskAssessmentId}.
                     </p>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="rounded-lg border border-border p-3">
                       <div className="text-xs text-muted-foreground">Risk Level</div>
-                      <StatusBadge risk={review.riskLevel} className="mt-1">
-                        {review.riskLevel}
+                      <StatusBadge tone="review" className="mt-1">
+                        PENDING
                       </StatusBadge>
                     </div>
                     <div className="rounded-lg border border-border p-3">
                       <div className="text-xs text-muted-foreground">Evidence</div>
                       <StatusBadge
-                        evidence={review.evidence.status}
                         className="mt-1"
                       >
-                        {review.evidence.status}
+                        {review.decision ?? 'REVIEW REQUIRED'}
                       </StatusBadge>
                     </div>
                     <div className="rounded-lg border border-border p-3">
                       <div className="text-xs text-muted-foreground">
                         Consequence
                       </div>
-                      <StatusBadge risk={review.consequence} className="mt-1">
-                        {review.consequence}
+                      <StatusBadge tone="neutral" className="mt-1">
+                        Assessment #{review.riskAssessmentId}
                       </StatusBadge>
                     </div>
                   </div>
@@ -156,22 +183,22 @@ export default function ReviewPage() {
                       Decision Recommendation
                     </div>
                     <p className="mt-1 text-sm text-foreground">
-                      {review.reasoning[0]}
+                      {review.comments ?? 'No reviewer comments yet.'}
                     </p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor={`reason-${review.evaluationId}`}>
+                    <Label htmlFor={`reason-${review.id}`}>
                       Reason (optional)
                     </Label>
                     <Textarea
-                      id={`reason-${review.evaluationId}`}
+                      id={`reason-${review.id}`}
                       placeholder="Provide a reason for this review decision..."
-                      value={reasons[review.evaluationId] ?? ''}
+                      value={reasons[String(review.id)] ?? ''}
                       onChange={(e) =>
                         setReasons((prev) => ({
                           ...prev,
-                          [review.evaluationId]: e.target.value,
+                          [String(review.id)]: e.target.value,
                         }))
                       }
                       className="min-h-[60px] text-sm"
@@ -181,7 +208,7 @@ export default function ReviewPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
-                      onClick={() => handleAction(review.evaluationId, 'APPROVED')}
+                      onClick={() => handleAction(review, 'approve')}
                       className="bg-success text-success-foreground hover:bg-success/90"
                     >
                       <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -190,7 +217,7 @@ export default function ReviewPage() {
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() => handleAction(review.evaluationId, 'REJECTED')}
+                      onClick={() => handleAction(review, 'reject')}
                     >
                       <XCircle className="mr-2 h-4 w-4" />
                       Reject
@@ -198,13 +225,13 @@ export default function ReviewPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleAction(review.evaluationId, 'OVERRIDDEN')}
+                      onClick={() => handleAction(review, 'modify')}
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
                       Override
                     </Button>
                     <Button asChild size="sm" variant="ghost" className="ml-auto">
-                      <Link href={`/evaluate/${review.evaluationId}`}>
+                      <Link href={`/evaluate/${review.riskAssessmentId}`}>
                         <FileSearch className="mr-2 h-4 w-4" />
                         View Detail
                       </Link>
@@ -217,39 +244,39 @@ export default function ReviewPage() {
         </div>
       )}
 
-      {Object.keys(resolved).length > 0 && (
+      {resolved.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Recently Resolved</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {Object.entries(resolved).map(([id, review]) => (
+              {resolved.map((review) => (
                 <div
-                  key={id}
+                  key={review.id}
                   className="flex items-center justify-between rounded-lg border border-border p-3"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm">{id}</span>
-                    {review?.reason && (
+                    <span className="font-mono text-sm">Review #{review.id}</span>
+                    {review.comments && (
                       <span className="text-xs text-muted-foreground">
-                        — {review.reason}
+                        — {review.comments}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{review?.reviewer}</span>
+                    <span>{review.reviewedAt}</span>
                     <span>·</span>
                     <StatusBadge
                       tone={
-                        review?.status === 'APPROVED'
+                        review.status === 'REVIEWED'
                           ? 'allow'
-                          : review?.status === 'REJECTED'
+                          : review.decision === 'REJECT'
                           ? 'block'
                           : 'review'
                       }
                     >
-                      {review?.status}
+                      {review.decision ?? review.status}
                     </StatusBadge>
                   </div>
                 </div>

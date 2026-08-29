@@ -1,10 +1,12 @@
 'use client';
 
+import * as React from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/common/status-badge';
-import { getDashboardMetrics } from '@/lib/mock-data';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
 import {
   Activity,
   ShieldAlert,
@@ -44,7 +46,57 @@ const riskColors: Record<string, string> = {
 };
 
 export default function MetricsPage() {
-  const metrics = getDashboardMetrics();
+  const [data, setData] = React.useState<{
+    totalEvaluations: number;
+    allowedDecisions: number;
+    modifyDecisions: number;
+    reviewDecisions: number;
+    blockedDecisions: number;
+    highRiskCount: number;
+    mediumRiskCount: number;
+    lowRiskCount: number;
+    averageRiskScore: number;
+  } | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    fetch(`${apiUrl}/api/metrics/dashboard`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load metrics.');
+        setData(await response.json());
+      })
+      .catch((requestError: Error) => setError(requestError.message));
+  }, []);
+
+  if (error) return <ErrorState title="Metrics unavailable" description={error} />;
+  if (!data) return <LoadingState />;
+
+  const total = data.totalEvaluations || 1;
+  const metrics = {
+    evaluationsToday: data.totalEvaluations,
+    allowRate: Math.round((data.allowedDecisions / total) * 100),
+    modifyRate: Math.round((data.modifyDecisions / total) * 100),
+    humanReviewRate: Math.round((data.reviewDecisions / total) * 100),
+    blockRate: Math.round((data.blockedDecisions / total) * 100),
+    decisionDistribution: [
+      { decision: 'ALLOW', count: data.allowedDecisions },
+      { decision: 'MODIFY', count: data.modifyDecisions },
+      { decision: 'HUMAN_REVIEW', count: data.reviewDecisions },
+      { decision: 'BLOCK', count: data.blockedDecisions },
+    ],
+    riskDistribution: [
+      { risk: 'LOW', count: data.lowRiskCount },
+      { risk: 'MEDIUM', count: data.mediumRiskCount },
+      { risk: 'HIGH', count: data.highRiskCount },
+      { risk: 'CRITICAL', count: 0 },
+    ],
+    evaluationVolume: [],
+    humanReviewTrend: [],
+  };
 
   return (
     <div className="space-y-6">
@@ -90,8 +142,8 @@ export default function MetricsPage() {
         />
         <MetricCard
           icon={Gauge}
-          label="Avg Evaluation Latency"
-          value={`${metrics.avgLatencyMs}ms`}
+            label="Average Risk"
+          value={`${Math.round(data.averageRiskScore)}%`}
         />
       </div>
 

@@ -1,10 +1,13 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/common/status-badge';
-import { useCaseList } from '@/lib/mock-data';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
+import type { UseCase } from '@/types';
 import {
   Briefcase,
   Clock,
@@ -15,6 +18,45 @@ import {
 } from 'lucide-react';
 
 export default function UseCasesPage() {
+  const [useCaseList, setUseCaseList] = React.useState<UseCase[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+
+    fetch(`${apiUrl}/api/use-cases`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Unable to load use cases.');
+        }
+
+        const backendUseCases = await response.json();
+        const loadedUseCases: UseCase[] = backendUseCases.map((useCase: Omit<UseCase, 'id' | 'recentEvaluations'> & { useCaseId: string }) => ({
+          ...useCase,
+          id: useCase.useCaseId,
+          commonRisks: normalizeList(useCase.commonRisks),
+          allowedAutonomy: normalizeList(useCase.allowedAutonomy) as UseCase['allowedAutonomy'],
+          recentEvaluations: [],
+        }));
+
+        setUseCaseList(loadedUseCases);
+      })
+      .catch((requestError: Error) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (error) {
+    return <ErrorState title="Use cases unavailable" description={error} />;
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -113,4 +155,10 @@ export default function UseCasesPage() {
       </div>
     </div>
   );
+}
+
+function normalizeList(value: string | string[] | null | undefined): string[] {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
 }

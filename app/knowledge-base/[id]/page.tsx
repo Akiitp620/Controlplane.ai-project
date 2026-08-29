@@ -6,8 +6,9 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
 import { Button } from '@/components/ui/button';
-import { knowledgeDocumentMap } from '@/lib/mock-data';
+import type { KnowledgeDocument } from '@/types';
 import {
   ArrowLeft,
   FileText,
@@ -18,11 +19,39 @@ import {
 export default function KnowledgeDocumentPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const [mounted, setMounted] = React.useState(false);
-  React.useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
+  const [doc, setDoc] = React.useState<KnowledgeDocument | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const doc = knowledgeDocumentMap[params.id];
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    fetch(`${apiUrl}/api/documents`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load document.');
+        const documents = await response.json();
+        const backendDoc = documents.find((item: { id: number }) => String(item.id) === params.id);
+        if (!backendDoc) return;
+        setDoc({
+          id: String(backendDoc.id),
+          name: backendDoc.name,
+          version: '1.0',
+          source: backendDoc.source ?? 'Backend document store',
+          lastUpdated: backendDoc.createdAt ?? '',
+          status: 'INDEXED',
+          category: backendDoc.documentType ?? 'General',
+          sections: [{ id: `${backendDoc.id}-summary`, title: 'Summary', content: backendDoc.description ?? 'No description provided.' }],
+          usedInEvaluations: 0,
+        });
+      })
+      .catch((requestError: Error) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState title="Document unavailable" description={error} />;
 
   if (!doc) {
     return (
