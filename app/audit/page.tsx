@@ -14,9 +14,10 @@ import {
 } from '@/components/ui/select';
 import { StatusBadge } from '@/components/common/status-badge';
 import { EmptyState } from '@/components/common/empty-state';
-import { getAuditTrail, useCaseList } from '@/lib/mock-data';
-import type { Decision, RiskLevel, UseCaseId } from '@/types';
-import { Search, History, ArrowRight } from 'lucide-react';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
+import type { AuditRecord, Decision, RiskLevel, UseCaseId } from '@/types';
+import { Search, History } from 'lucide-react';
 
 export default function AuditPage() {
   const [query, setQuery] = React.useState('');
@@ -24,7 +25,67 @@ export default function AuditPage() {
   const [decisionFilter, setDecisionFilter] = React.useState<string>('all');
   const [riskFilter, setRiskFilter] = React.useState<string>('all');
 
-  const audits = React.useMemo(() => getAuditTrail(), []);
+  const [audits, setAudits] = React.useState<AuditRecord[]>([]);
+  const [useCaseList, setUseCaseList] = React.useState<{ id: UseCaseId; name: string }[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    const headers: HeadersInit = token
+      ? { Authorization: `Bearer ${token}` }
+      : {};
+
+    Promise.all([
+      fetch(`${apiUrl}/api/audit`, { headers }),
+      fetch(`${apiUrl}/api/use-cases`, { headers }),
+    ])
+      .then(async ([auditResponse, useCaseResponse]) => {
+        if (!auditResponse.ok || !useCaseResponse.ok) {
+          throw new Error('Unable to load audit records.');
+        }
+
+        const [backendAudits, backendUseCases] = await Promise.all([
+          auditResponse.json(),
+          useCaseResponse.json(),
+        ]);
+
+        setUseCaseList(backendUseCases.map((useCase: { useCaseId: UseCaseId; name: string }) => ({
+          id: useCase.useCaseId,
+          name: useCase.name,
+        })));
+        setAudits(backendAudits.map((audit: {
+          id: number;
+          evaluationId: string;
+          createdAt: string;
+          useCase: string;
+          risk: RiskLevel;
+          decision: Decision;
+          policy: string;
+        }) => ({
+          id: String(audit.id),
+          evaluationId: audit.evaluationId,
+          timestamp: audit.createdAt,
+          useCase: (audit.useCase || 'customer_support') as UseCaseId,
+          risk: audit.risk,
+          consequence: audit.risk,
+          decision: audit.decision,
+          policy: audit.policy,
+          status: audit.decision === 'HUMAN_REVIEW' ? 'REVIEWED' : 'AUTO',
+        })));
+      })
+      .catch((requestError: Error) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (error) {
+    return <ErrorState title="Audit trail unavailable" description={error} />;
+  }
 
   const filtered = audits.filter((a) => {
     const matchesQuery =

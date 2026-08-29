@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { EvaluationWorkspace } from '@/components/evaluation/evaluation-workspace';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,15 +9,54 @@ import {
   Activity,
   Gauge,
   ShieldAlert,
-  ShieldCheck,
   ShieldX,
   Sparkles,
   Waypoints,
 } from 'lucide-react';
-import { getDashboardMetrics } from '@/lib/mock-data';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
+
+interface DashboardMetrics {
+  totalEvaluations: number;
+  reviewDecisions: number;
+  blockedDecisions: number;
+  averageRiskScore: number;
+}
 
 export default function DashboardPage() {
-  const metrics = getDashboardMetrics();
+  const [metrics, setMetrics] = React.useState<DashboardMetrics | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+
+    fetch(`${apiUrl}/api/metrics/dashboard`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('Unable to load dashboard metrics.');
+        }
+
+        const data = await response.json();
+        setMetrics({
+          totalEvaluations: data.totalEvaluations ?? 0,
+          reviewDecisions: data.reviewDecisions ?? 0,
+          blockedDecisions: data.blockedDecisions ?? 0,
+          averageRiskScore: data.averageRiskScore ?? 0,
+        });
+      })
+      .catch((requestError: Error) => setError(requestError.message));
+  }, []);
+
+  if (error) {
+    return <ErrorState title="Dashboard unavailable" description={error} />;
+  }
+
+  if (!metrics) {
+    return <LoadingState />;
+  }
 
   return (
     <div className="space-y-8 pb-4">
@@ -144,7 +184,7 @@ export default function DashboardPage() {
           <MetricCard
             icon={Activity}
             label="Evaluations"
-            value={metrics.evaluationsToday}
+            value={metrics.totalEvaluations}
             description="AI responses evaluated"
             tone="blue"
           />
@@ -152,7 +192,7 @@ export default function DashboardPage() {
           <MetricCard
             icon={ShieldAlert}
             label="Human Review"
-            value={metrics.humanReviews}
+            value={metrics.reviewDecisions}
             description="Awaiting human oversight"
             tone="amber"
           />
@@ -160,16 +200,16 @@ export default function DashboardPage() {
           <MetricCard
             icon={ShieldX}
             label="Blocked"
-            value={metrics.blocked}
+            value={metrics.blockedDecisions}
             description="Prevented from proceeding"
             tone="red"
           />
 
           <MetricCard
             icon={Gauge}
-            label="Avg. Latency"
-            value={`${metrics.avgLatencyMs}ms`}
-            description="Average evaluation time"
+            label="Avg. Risk"
+            value={`${Math.round(metrics.averageRiskScore)}%`}
+            description="Average evaluation risk"
             tone="violet"
           />
         </div>
@@ -234,7 +274,7 @@ export default function DashboardPage() {
 
             <CompactInsight
               label="Review Queue"
-              value={`${metrics.humanReviews} Pending`}
+              value={`${metrics.reviewDecisions} Pending`}
               tone="amber"
             />
 

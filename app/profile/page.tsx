@@ -1,9 +1,12 @@
 'use client';
 
+import * as React from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/common/status-badge';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
 import {
   User,
   Shield,
@@ -14,6 +17,25 @@ import {
 } from 'lucide-react';
 
 export default function ProfilePage() {
+  const [profile, setProfile] = React.useState<{ name: string; email: string; role: string } | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    fetch(`${apiUrl}/api/profile`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load profile.');
+        setProfile(await response.json());
+      })
+      .catch((requestError: Error) => setError(requestError.message));
+  }, []);
+
+  if (error) return <ErrorState title="Profile unavailable" description={error} />;
+  if (!profile) return <LoadingState />;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -30,10 +52,10 @@ export default function ProfilePage() {
         <CardContent className="p-6">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground">
-              RA
+              {profile.name.slice(0, 2).toUpperCase()}
             </div>
             <div>
-              <h2 className="text-xl font-semibold text-foreground">Risk Admin</h2>
+              <h2 className="text-xl font-semibold text-foreground">{profile.name}</h2>
               <p className="text-sm text-muted-foreground">
                 AI Governance Administrator
               </p>
@@ -48,16 +70,16 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2">
-            <DetailRow icon={User} label="Name" value="Risk Admin" />
+            <DetailRow icon={User} label="Name" value={profile.name} />
             <DetailRow
               icon={Mail}
               label="Email"
-              value="governance@controlplane.ai"
+              value={profile.email}
             />
             <DetailRow
               icon={Shield}
               label="Role"
-              value="AI Governance Administrator"
+              value={profile.role}
             />
             <DetailRow
               icon={Building2}

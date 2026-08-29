@@ -8,18 +8,51 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/common/empty-state';
-import { knowledgeDocuments } from '@/lib/mock-data';
+import { ErrorState } from '@/components/common/error-state';
+import { LoadingState } from '@/components/common/loading-state';
+import type { KnowledgeDocument } from '@/types';
 import { Search, FileText, Upload, ArrowRight, BookOpen } from 'lucide-react';
 
 export default function KnowledgeBasePage() {
   const [query, setQuery] = React.useState('');
+  const [documents, setDocuments] = React.useState<KnowledgeDocument[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const filtered = knowledgeDocuments.filter(
+  React.useEffect(() => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+    fetch(`${apiUrl}/api/documents`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Unable to load knowledge documents.');
+        const backendDocuments = await response.json();
+        setDocuments(backendDocuments.map((doc: { id: number; name: string; documentType?: string; description?: string; source?: string; createdAt?: string }) => ({
+          id: String(doc.id),
+          name: doc.name,
+          version: '1.0',
+          source: doc.source ?? 'Backend document store',
+          lastUpdated: doc.createdAt ?? '',
+          status: 'INDEXED',
+          category: doc.documentType ?? 'General',
+          sections: [{ id: `${doc.id}-summary`, title: 'Summary', content: doc.description ?? 'No description provided.' }],
+          usedInEvaluations: 0,
+        })));
+      })
+      .catch((requestError: Error) => setError(requestError.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = documents.filter(
     (doc) =>
       doc.name.toLowerCase().includes(query.toLowerCase()) ||
       doc.category.toLowerCase().includes(query.toLowerCase()) ||
       doc.source.toLowerCase().includes(query.toLowerCase())
   );
+
+  if (loading) return <LoadingState />;
+  if (error) return <ErrorState title="Knowledge base unavailable" description={error} />;
 
   return (
     <div className="space-y-6">
