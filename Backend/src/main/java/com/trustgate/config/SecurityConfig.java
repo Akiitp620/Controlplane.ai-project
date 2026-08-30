@@ -22,7 +22,9 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter
+    ) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
     }
 
@@ -32,11 +34,19 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http
+    ) throws Exception {
 
         http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                // CORS
+                .cors(cors ->
+                        cors.configurationSource(
+                                corsConfigurationSource()
+                        )
+                )
 
+                // Stateless JWT API
                 .csrf(csrf -> csrf.disable())
 
                 .sessionManagement(session ->
@@ -45,16 +55,30 @@ public class SecurityConfig {
                         )
                 )
 
+                // Authorization rules
                 .authorizeHttpRequests(auth -> auth
+
+                        // Public authentication endpoints
                         .requestMatchers("/api/auth/**").permitAll()
+
+                        // Public health check
                         .requestMatchers("/api/health").permitAll()
+
+                        // Allow Spring error endpoint to expose
+                        // the real underlying exception
+                        .requestMatchers("/error").permitAll()
+
+                        // CORS preflight
                         .requestMatchers(
                                 HttpMethod.OPTIONS,
                                 "/**"
                         ).permitAll()
+
+                        // Everything else requires JWT
                         .anyRequest().authenticated()
                 )
 
+                // Custom JWT authentication
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter.class
@@ -66,10 +90,16 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
 
-        CorsConfiguration configuration = new CorsConfiguration();
+        CorsConfiguration configuration =
+                new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                List.of("http://localhost:3000")
+                List.of(
+                        "http://localhost:3000",
+                        "http://localhost:3001",
+                        "https://controlplane.ai",
+                        "https://controlplane-ai.netlify.app"
+                )
         );
 
         configuration.setAllowedMethods(
@@ -92,7 +122,10 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
 
-        source.registerCorsConfiguration("/**", configuration);
+        source.registerCorsConfiguration(
+                "/**",
+                configuration
+        );
 
         return source;
     }
