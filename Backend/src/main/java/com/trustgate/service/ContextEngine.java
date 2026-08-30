@@ -26,6 +26,7 @@ public class ContextEngine {
             case "BANKING" -> 85;
             case "HR" -> 80;
             case "EDUCATION" -> 60;
+            case "DECISION_SUPPORT" -> 70;
             case "CUSTOMER_SUPPORT" -> 45;
             case "MARKETING" -> 30;
             default -> 50;
