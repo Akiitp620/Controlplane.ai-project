@@ -100,6 +100,7 @@ public class SecurityConfig {
                         "http://localhost:3002",
                         "https://controlplane.ai",
                         "https://controlplane-ai.netlify.app"
+                        "https://controlplane-ai-project.vercel.app"
                 )
         );
 
