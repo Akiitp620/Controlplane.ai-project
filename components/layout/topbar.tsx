@@ -44,19 +44,37 @@ export function Topbar({ onMobileMenu }: TopbarProps) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
+  const [mounted, setMounted] = React.useState(false);
+
   const [pendingCount, setPendingCount] =
     React.useState(0);
 
+    const [currentUser, setCurrentUser] = React.useState<{
+  name?: string;
+  email?: string;
+  role?: string;
+} | null>(null);
+
   React.useEffect(() => {
-    setPendingCount(getPendingReviews().length);
-  }, []);
+  setMounted(true);
+  setPendingCount(getPendingReviews().length);
+
+  const storedUser = window.localStorage.getItem('user');
+
+  if (storedUser) {
+    try {
+      setCurrentUser(JSON.parse(storedUser));
+    } catch (error) {
+      console.error('Failed to parse stored user:', error);
+    }
+  }
+}, []);
 
   const handleSignOut = () => {
-    /*
-     * Demo authentication flow:
-     * There is currently no real auth/session backend.
-     * Redirect the user to the public ControlPlane landing page.
-     */
+    // Clear the JWT token and user data from localStorage so the
+    // next authenticated request is not sent with a stale token.
+    window.localStorage.removeItem('token');
+    window.localStorage.removeItem('user');
     router.push('/');
   };
 
@@ -102,11 +120,15 @@ export function Topbar({ onMobileMenu }: TopbarProps) {
   }
   className="relative"
 >
-  {theme === 'dark' ? (
-    <Sun className="h-4.5 w-4.5" />
+{mounted ? (
+  theme === 'dark' ? (
+    <Sun className="h-4 w-4" />
   ) : (
-    <Moon className="h-4.5 w-4.5" />
-  )}
+    <Moon className="h-4 w-4" />
+  )
+) : (
+  <span className="h-4 w-4" />
+)}
 
   <span className="sr-only">
     Toggle dark mode
@@ -264,12 +286,17 @@ export function Topbar({ onMobileMenu }: TopbarProps) {
               className="gap-2 px-2"
             >
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                RA
+               {currentUser?.name
+  ?.split(' ')
+  .map((part) => part[0])
+  .join('')
+  .slice(0, 2)
+  .toUpperCase() || 'U'}
               </div>
 
               <span className="hidden text-sm font-medium sm:inline">
-                Risk Admin
-              </span>
+  {currentUser?.name || 'User'}
+</span>
 
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
@@ -281,12 +308,12 @@ export function Topbar({ onMobileMenu }: TopbarProps) {
           >
             <DropdownMenuLabel>
               <div className="text-sm font-medium">
-                Risk Admin
-              </div>
+  {currentUser?.name || 'User'}
+</div>
 
               <div className="text-xs text-muted-foreground">
-                governance@controlplane.ai
-              </div>
+  {currentUser?.email || ''}
+</div>
             </DropdownMenuLabel>
 
             <DropdownMenuSeparator />
