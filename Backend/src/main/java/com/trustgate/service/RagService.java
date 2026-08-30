@@ -92,7 +92,13 @@ public class RagService {
                     .build();
 
             return vectorStore.similaritySearch(request);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            System.out.println(
+                    "RAG SEARCH FALLBACK: vector search failed ("
+                            + e.getClass().getSimpleName()
+                            + " - " + e.getMessage()
+                            + "). Using lexical fallback."
+            );
             return documentRepository.findAll().stream()
                     .filter(document -> document.getDescription() != null)
                     .filter(document -> containsQueryTerms(query, document.getDescription()))
