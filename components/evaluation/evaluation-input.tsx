@@ -1,7 +1,9 @@
 'use client';
 
 import * as React from 'react';
+
 import { Button } from '@/components/ui/button';
+
 import {
   Select,
   SelectContent,
@@ -9,14 +11,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+
 import {
   Play,
   Loader2,
@@ -37,6 +42,7 @@ import type { UseCaseId } from '@/types';
 
 interface EvaluationInputProps {
   onEvaluate: (useCase: UseCaseId, response: string) => void;
+  onInputChange?: () => void;
   isEvaluating: boolean;
   defaultUseCase?: UseCaseId;
   defaultResponse?: string;
@@ -44,6 +50,7 @@ interface EvaluationInputProps {
 
 export function EvaluationInput({
   onEvaluate,
+  onInputChange,
   isEvaluating,
   defaultUseCase = 'decision_support',
   defaultResponse = '',
@@ -54,7 +61,7 @@ export function EvaluationInput({
   const [response, setResponse] =
     React.useState(defaultResponse);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!response.trim() || isEvaluating) {
@@ -67,10 +74,32 @@ export function EvaluationInput({
   const handleScenario = (scenario: DemoScenario) => {
     setUseCase(scenario.useCase);
     setResponse(scenario.response);
+
+    // Tell the parent that the input changed so any
+    // previous evaluation result becomes stale.
+    onInputChange?.();
+  };
+
+  const handleUseCaseChange = (value: string) => {
+    setUseCase(value as UseCaseId);
+
+    // Changing the context also invalidates the previous result.
+    onInputChange?.();
+  };
+
+  const handleResponseChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>,
+  ) => {
+    setResponse(event.target.value);
+
+    // Any manual response edit makes the previous
+    // evaluation no longer representative of the current input.
+    onInputChange?.();
   };
 
   const handleClear = () => {
     setResponse('');
+    onInputChange?.();
   };
 
   const characterCount = response.length;
@@ -172,9 +201,8 @@ export function EvaluationInput({
 
             <Select
               value={useCase}
-              onValueChange={(value) =>
-                setUseCase(value as UseCaseId)
-              }
+              onValueChange={handleUseCaseChange}
+              disabled={isEvaluating}
             >
               <SelectTrigger
                 id="use-case"
@@ -223,9 +251,7 @@ export function EvaluationInput({
               <Textarea
                 id="ai-response"
                 value={response}
-                onChange={(event) =>
-                  setResponse(event.target.value)
-                }
+                onChange={handleResponseChange}
                 placeholder="Paste the AI-generated response you want ControlPlane to evaluate..."
                 className="min-h-[170px] resize-y border-border/70 bg-background px-4 py-3 font-mono text-sm leading-6 shadow-none transition-all placeholder:text-muted-foreground/60 focus-visible:border-blue-500 focus-visible:ring-4 focus-visible:ring-blue-500/10"
                 disabled={isEvaluating}
