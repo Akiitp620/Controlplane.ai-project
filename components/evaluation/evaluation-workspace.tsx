@@ -16,8 +16,7 @@ import { PolicySnapshotCard } from '@/components/evaluation/policy-snapshot';
 import { DecisionReasoningPanel } from '@/components/evaluation/decision-reasoning';
 import { DecisionPipeline } from '@/components/evaluation/decision-pipeline';
 import { EmptyState } from '@/components/common/empty-state';
-
-
+import { storeEvaluation } from '@/lib/mock-data';
 
 import type {
   EvaluationResult,
@@ -36,6 +35,30 @@ interface EvaluationWorkspaceProps {
   compact?: boolean;
 }
 
+interface BackendEvaluationResponse {
+  assessmentId?: number;
+  passportId?: number | null;
+
+  applicationType?: string;
+  riskTolerance?: string;
+
+  hallucinationScore: number;
+  privacyScore: number;
+  biasScore: number;
+  confidenceScore: number;
+  contextRiskScore: number;
+  overallRiskScore: number;
+
+  consequenceLevel?: string;
+  consequenceScore?: number;
+  consequenceReason?: string;
+
+  decision: string;
+  finalResponse?: string;
+  reason?: string;
+  evidence?: string[];
+}
+
 export function EvaluationWorkspace({
   compact = false,
 }: EvaluationWorkspaceProps) {
@@ -45,214 +68,601 @@ export function EvaluationWorkspace({
   const [result, setResult] =
     React.useState<EvaluationResult | null>(null);
 
-const generateEvaluationId = () => {
-  return `EVAL-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-};
+  /**
+   * Tracks the latest evaluation run.
+   *
+   * Every new input change or evaluation increments this value.
+   * In-flight older requests are ignored when their run id no
+   * longer matches the latest active run.
+   */
+  const evaluationRunRef = React.useRef(0);
 
-const transformBackendResponse = (
-  backendData: any,
-  useCase: UseCaseId,
-  response: string
-): EvaluationResult => {
-  const evaluationId = backendData.assessmentId
-    ? `EVAL-${backendData.assessmentId}`
-    : generateEvaluationId();
-  const timestamp = new Date().toISOString();
+  /**
+   * Clear stale evaluation output whenever the current input
+   * changes.
+   *
+   * This prevents an old decision from remaining visible while
+   * the user is preparing a different scenario.
+   */
+  const handleInputChange = React.useCallback(() => {
+    evaluationRunRef.current += 1;
 
-  const riskLevel = backendData.overallRiskScore > 70
-    ? 'CRITICAL'
-    : backendData.overallRiskScore > 50
-      ? 'HIGH'
-      : backendData.overallRiskScore > 30
-        ? 'MEDIUM'
-        : 'LOW';
+    setResult(null);
+    setStatus('idle');
+  }, []);
 
-  const decisionMap: Record<string, EvaluationResult['decision']> = {
-    PASS: 'ALLOW',
-    WARN: 'HUMAN_REVIEW',
-    ESCALATE: 'HUMAN_REVIEW',
-    MODIFY: 'MODIFY',
-    ALLOW: 'ALLOW',
-    HUMAN_REVIEW: 'HUMAN_REVIEW',
-    BLOCK: 'BLOCK',
-  };
-  const decision = decisionMap[backendData.decision] || 'HUMAN_REVIEW';
+  const generateEvaluationId = React.useCallback(() => {
+    return `EVAL-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 11)}`;
+  }, []);
 
-  // Create findings from individual scores
-  const findings: Record<string, 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'> = {
-    hallucination: backendData.hallucinationScore > 70 ? 'HIGH' : backendData.hallucinationScore > 40 ? 'MEDIUM' : 'LOW',
-    privacy: backendData.privacyScore > 70 ? 'HIGH' : backendData.privacyScore > 40 ? 'MEDIUM' : 'LOW',
-    bias: backendData.biasScore > 70 ? 'HIGH' : backendData.biasScore > 40 ? 'MEDIUM' : 'LOW',
-    safety: backendData.overallRiskScore > 70 ? 'HIGH' : backendData.overallRiskScore > 40 ? 'MEDIUM' : 'LOW',
-    responsibility: backendData.contextRiskScore > 70 ? 'HIGH' : backendData.contextRiskScore > 40 ? 'MEDIUM' : 'LOW',
-  };
+  const transformBackendResponse = React.useCallback(
+    (
+      backendData: BackendEvaluationResponse,
+      useCase: UseCaseId,
+      response: string,
+    ): EvaluationResult => {
+      const evaluationId = backendData.assessmentId
+        ? `EVAL-${backendData.assessmentId}`
+        : generateEvaluationId();
 
-  // Create risk details from scores
-  const riskDetails = [
-    {
-      dimension: 'hallucination' as const,
-      severity: findings.hallucination,
-      confidence: backendData.hallucinationScore,
-      explanation: `Hallucination risk score: ${backendData.hallucinationScore}`,
-    },
-    {
-      dimension: 'privacy' as const,
-      severity: findings.privacy,
-      confidence: backendData.privacyScore,
-      explanation: `Privacy risk score: ${backendData.privacyScore}`,
-    },
-    {
-      dimension: 'bias' as const,
-      severity: findings.bias,
-      confidence: backendData.biasScore,
-      explanation: `Bias risk score: ${backendData.biasScore}`,
-    },
-    {
-      dimension: 'responsibility' as const,
-      severity: findings.responsibility,
-      confidence: backendData.contextRiskScore,
-      explanation: `Context risk score: ${backendData.contextRiskScore}`,
-    },
-  ];
+      const timestamp = new Date().toISOString();
 
-  // Create pipeline stages
-  const pipeline = [
-    {
-      key: 'context' as const,
-      label: 'Context',
-      status: backendData.contextRiskScore < 50 ? ('pass' as const) : ('warn' as const),
-      detail: `Context risk: ${backendData.contextRiskScore}`,
-    },
-    {
-      key: 'risk' as const,
-      label: 'Risk Analysis',
-      status: backendData.overallRiskScore < 50 ? ('pass' as const) : ('warn' as const),
-      detail: `Overall risk: ${backendData.overallRiskScore}`,
-    },
-    {
-      key: 'evidence' as const,
-      label: 'Evidence',
-      status: backendData.evidence?.length ? ('warn' as const) : ('neutral' as const),
-      detail: backendData.evidence?.length ? `${backendData.evidence.length} evidence source(s) retrieved` : 'No evidence retrieved',
-    },
-    {
-      key: 'consequence' as const,
-      label: 'Consequence',
-      status: 'pass' as const,
-      detail: 'Impact assessed',
-    },
-    {
-      key: 'policy' as const,
-      label: 'Policy',
-      status: decision === 'ALLOW' ? ('pass' as const) : ('warn' as const),
-      detail: `Policy decision: ${backendData.decision}`,
-    },
-    {
-      key: 'autonomy' as const,
-      label: 'Autonomy',
-      status: decision === 'ALLOW' ? ('pass' as const) : ('warn' as const),
-      detail: `Autonomy: ${backendData.decision}`,
-    },
-  ];
+      // =========================================================
+      // RISK LEVEL
+      // =========================================================
 
-  return {
-    evaluationId,
-    useCase,
-    response,
-    timestamp,
-    riskLevel,
-    findings,
-    riskDetails,
-    evidence: {
-      status: backendData.hallucinationScore >= 80 ? 'CONTRADICTED' : backendData.evidence?.length ? 'VERIFIED' : 'UNKNOWN',
-      sources: (backendData.evidence || []).map((source: string, index: number) => ({
-        id: String(index + 1),
-        title: `Backend evidence ${index + 1}`,
-        status: backendData.hallucinationScore >= 80 ? 'CONTRADICTED' : 'VERIFIED',
-        claim: response,
-        sourceSays: source,
-      })),
-    },
-    consequence: 'MEDIUM' as const,
-    consequenceImpact: backendData.reason || 'Evaluation completed',
-    policy: {
-      id: '1',
-      name: 'Default Policy',
-      version: '1.0',
-      status: 'ACTIVE' as const,
-    },
-    decision,
-    reasoning: [backendData.reason || 'No additional reasoning provided'],
-    pipeline,
-    humanReview: backendData.decision === 'ESCALATE' || backendData.decision === 'WARN'
-      ? { status: 'PENDING', reason: backendData.reason }
-      : undefined,
-  };
-};
+      const riskLevel =
+        backendData.overallRiskScore > 70
+          ? 'CRITICAL'
+          : backendData.overallRiskScore > 50
+            ? 'HIGH'
+            : backendData.overallRiskScore > 30
+              ? 'MEDIUM'
+              : 'LOW';
 
-const handleEvaluate = async (
-  useCase: UseCaseId,
-  response: string,
-) => {
-  setStatus('evaluating');
-  setResult(null);
+      // =========================================================
+      // DECISION MAPPING
+      // =========================================================
 
-  try {
-    const token = localStorage.getItem('token');
+      const decisionMap: Record<
+        string,
+        EvaluationResult['decision']
+      > = {
+        PASS: 'ALLOW',
+        WARN: 'HUMAN_REVIEW',
+        ESCALATE: 'HUMAN_REVIEW',
+        MODIFY: 'MODIFY',
+        ALLOW: 'ALLOW',
+        HUMAN_REVIEW: 'HUMAN_REVIEW',
+        BLOCK: 'BLOCK',
+      };
 
-    const apiResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/analyze`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token
-            ? { Authorization: `Bearer ${token}` }
-            : {}),
+      const decision =
+        decisionMap[backendData.decision] ||
+        'HUMAN_REVIEW';
+
+      // =========================================================
+      // FINDINGS
+      // =========================================================
+
+      const findings: Record<
+        string,
+        'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+      > = {
+        hallucination:
+          backendData.hallucinationScore > 70
+            ? 'HIGH'
+            : backendData.hallucinationScore > 40
+              ? 'MEDIUM'
+              : 'LOW',
+
+        privacy:
+          backendData.privacyScore > 70
+            ? 'HIGH'
+            : backendData.privacyScore > 40
+              ? 'MEDIUM'
+              : 'LOW',
+
+        bias:
+          backendData.biasScore > 70
+            ? 'HIGH'
+            : backendData.biasScore > 40
+              ? 'MEDIUM'
+              : 'LOW',
+
+        safety:
+          backendData.overallRiskScore > 70
+            ? 'HIGH'
+            : backendData.overallRiskScore > 40
+              ? 'MEDIUM'
+              : 'LOW',
+
+        responsibility:
+          backendData.contextRiskScore > 70
+            ? 'HIGH'
+            : backendData.contextRiskScore > 40
+              ? 'MEDIUM'
+              : 'LOW',
+      };
+
+      // =========================================================
+      // RISK DETAILS
+      // =========================================================
+
+      const riskDetails = [
+        {
+          dimension: 'hallucination' as const,
+          severity: findings.hallucination,
+          confidence: backendData.hallucinationScore,
+          explanation:
+            `Hallucination risk score: ${backendData.hallucinationScore}`,
         },
-        body: JSON.stringify({
-          applicationId: 1,
-          userRequest: response,
-          aiResponse: response,
-        }),
-      },
-    );
 
-    const text = await apiResponse.text();
+        {
+          dimension: 'privacy' as const,
+          severity: findings.privacy,
+          confidence: backendData.privacyScore,
+          explanation:
+            `Privacy risk score: ${backendData.privacyScore}`,
+        },
 
-    console.log('Analyze status:', apiResponse.status);
-    console.log('Analyze response:', text);
+        {
+          dimension: 'bias' as const,
+          severity: findings.bias,
+          confidence: backendData.biasScore,
+          explanation:
+            `Bias risk score: ${backendData.biasScore}`,
+        },
 
-    if (!apiResponse.ok) {
-      throw new Error(
-        text || `Analysis failed (${apiResponse.status})`,
+        {
+          dimension: 'responsibility' as const,
+          severity: findings.responsibility,
+          confidence: backendData.contextRiskScore,
+          explanation:
+            `Context risk score: ${backendData.contextRiskScore}`,
+        },
+      ];
+
+      // =========================================================
+      // CONSEQUENCE
+      // =========================================================
+      //
+      // Backend now returns:
+      //   consequenceLevel
+      //   consequenceScore
+      //   consequenceReason
+      //
+      // Older responses without these fields are handled safely.
+      //
+
+      const consequenceLevelMap: Record<
+        string,
+        EvaluationResult['consequence']
+      > = {
+        LOW: 'LOW',
+        MEDIUM: 'MEDIUM',
+        HIGH: 'HIGH',
+        CRITICAL: 'CRITICAL',
+      };
+
+      const normalizedConsequenceLevel =
+        (
+          backendData.consequenceLevel ??
+          'MEDIUM'
+        ).toUpperCase();
+
+      const consequenceLevel =
+        consequenceLevelMap[
+          normalizedConsequenceLevel
+        ] ?? 'MEDIUM';
+
+      const consequenceScore =
+        typeof backendData.consequenceScore === 'number'
+          ? backendData.consequenceScore
+          : 0;
+
+      const consequenceReason =
+        backendData.consequenceReason ||
+        'Consequence impact assessed from the application context.';
+
+      // =========================================================
+      // DECISION PIPELINE
+      // =========================================================
+
+      const pipeline = [
+        {
+          key: 'context' as const,
+          label: 'Context',
+
+          status:
+            backendData.contextRiskScore < 50
+              ? ('pass' as const)
+              : ('warn' as const),
+
+          detail:
+            `Context risk: ${backendData.contextRiskScore}`,
+        },
+
+        {
+          key: 'risk' as const,
+          label: 'Risk Analysis',
+
+          status:
+            backendData.overallRiskScore < 50
+              ? ('pass' as const)
+              : ('warn' as const),
+
+          detail:
+            `Overall risk: ${backendData.overallRiskScore}`,
+        },
+
+        {
+          key: 'evidence' as const,
+          label: 'Evidence',
+
+          status:
+            backendData.evidence?.length
+              ? ('warn' as const)
+              : ('neutral' as const),
+
+          detail:
+            backendData.evidence?.length
+              ? `${backendData.evidence.length} evidence source(s) retrieved`
+              : 'No evidence retrieved',
+        },
+
+        {
+          key: 'consequence' as const,
+          label: 'Consequence',
+
+          status:
+            consequenceLevel === 'HIGH' ||
+            consequenceLevel === 'CRITICAL'
+              ? ('warn' as const)
+              : ('pass' as const),
+
+          detail:
+            `Consequence: ${consequenceLevel} · Score ${consequenceScore}`,
+        },
+
+        {
+          key: 'policy' as const,
+          label: 'Policy',
+
+          status:
+            decision === 'ALLOW'
+              ? ('pass' as const)
+              : ('warn' as const),
+
+          detail:
+            `Policy decision: ${backendData.decision}`,
+        },
+
+        {
+          key: 'autonomy' as const,
+          label: 'Autonomy',
+
+          status:
+            decision === 'ALLOW'
+              ? ('pass' as const)
+              : ('warn' as const),
+
+          detail:
+            `Autonomy: ${backendData.decision}`,
+        },
+      ];
+
+      // =========================================================
+      // FINAL UI RESULT
+      // =========================================================
+
+      return {
+        evaluationId,
+        useCase,
+        response,
+        timestamp,
+        riskLevel,
+
+        findings,
+        riskDetails,
+
+        // -------------------------------------------------------
+        // Evidence
+        // -------------------------------------------------------
+
+        evidence: {
+          status:
+            backendData.hallucinationScore >= 80
+              ? 'CONTRADICTED'
+              : backendData.evidence?.length
+                ? 'VERIFIED'
+                : 'UNKNOWN',
+
+          sources: (backendData.evidence || []).map(
+            (source: string, index: number) => ({
+              id: String(index + 1),
+
+              title:
+                `Backend evidence ${index + 1}`,
+
+              status:
+                backendData.hallucinationScore >= 80
+                  ? 'CONTRADICTED'
+                  : 'VERIFIED',
+
+              claim: response,
+              sourceSays: source,
+            }),
+          ),
+        },
+
+        // -------------------------------------------------------
+        // REAL CONSEQUENCE DATA
+        // -------------------------------------------------------
+
+        consequence: consequenceLevel,
+
+        consequenceImpact:
+          `${consequenceReason} Consequence score: ${consequenceScore}/100.`,
+
+        // -------------------------------------------------------
+        // Policy
+        // -------------------------------------------------------
+
+        policy: {
+          id: '1',
+          name: 'Default Policy',
+          version: '1.0',
+          status: 'ACTIVE' as const,
+        },
+
+        // -------------------------------------------------------
+        // Decision
+        // -------------------------------------------------------
+
+        decision,
+
+        reasoning: [
+          backendData.reason ||
+            'No additional reasoning provided',
+        ],
+
+        // -------------------------------------------------------
+        // Pipeline
+        // -------------------------------------------------------
+
+        pipeline,
+
+        // -------------------------------------------------------
+        // Human Review
+        // -------------------------------------------------------
+
+        humanReview:
+          backendData.decision === 'ESCALATE' ||
+          backendData.decision === 'WARN'
+            ? {
+                status: 'PENDING',
+                reason: backendData.reason,
+              }
+            : undefined,
+      };
+    },
+    [generateEvaluationId],
+  );
+
+  // ===========================================================
+  // EVALUATE
+  // ===========================================================
+
+  const handleEvaluate = async (
+    useCase: UseCaseId,
+    response: string,
+  ) => {
+    const runId =
+      ++evaluationRunRef.current;
+
+    setStatus('evaluating');
+    setResult(null);
+
+    try {
+      const token =
+        window.localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error(
+          'Authentication token not found. Please sign in again.',
+        );
+      }
+
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL ??
+        'http://localhost:8080';
+
+      // =========================================================
+      // 1. RESOLVE APPLICATION
+      // =========================================================
+
+      const applicationsResponse =
+        await fetch(
+          `${apiUrl}/api/applications`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+      if (runId !== evaluationRunRef.current) {
+        return;
+      }
+
+      if (!applicationsResponse.ok) {
+        throw new Error(
+          `Unable to load applications (${applicationsResponse.status})`,
+        );
+      }
+
+      const applications =
+        await applicationsResponse.json();
+
+      if (runId !== evaluationRunRef.current) {
+        return;
+      }
+
+      if (
+        !Array.isArray(applications) ||
+        applications.length === 0
+      ) {
+        throw new Error(
+          'No application found. Please seed the database first.',
+        );
+      }
+
+      const applicationId =
+        applications[0].id;
+
+      // =========================================================
+      // 2. CALL BACKEND ANALYSIS
+      // =========================================================
+
+      const apiResponse =
+        await fetch(
+          `${apiUrl}/api/analyze`,
+          {
+            method: 'POST',
+
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              applicationId,
+              userRequest: response,
+              aiResponse: response,
+            }),
+          },
+        );
+
+      const text =
+        await apiResponse.text();
+
+      if (runId !== evaluationRunRef.current) {
+        return;
+      }
+
+      if (!apiResponse.ok) {
+        throw new Error(
+          text ||
+            `Analysis failed (${apiResponse.status})`,
+        );
+      }
+
+      // =========================================================
+      // 3. PARSE RESPONSE
+      // =========================================================
+
+      let data: BackendEvaluationResponse;
+
+      try {
+        data = JSON.parse(
+          text,
+        ) as BackendEvaluationResponse;
+      } catch {
+        throw new Error(
+          'Backend returned an invalid evaluation response.',
+        );
+      }
+
+      if (runId !== evaluationRunRef.current) {
+        return;
+      }
+
+      // =========================================================
+      // 4. TRANSFORM
+      // =========================================================
+
+      const transformedResult =
+        transformBackendResponse(
+          data,
+          useCase,
+          response,
+        );
+
+      if (runId !== evaluationRunRef.current) {
+        return;
+      }
+
+      // =========================================================
+      // 5. PERSIST
+      // =========================================================
+
+      storeEvaluation(
+        transformedResult,
       );
+
+      // =========================================================
+      // 6. UPDATE UI
+      // =========================================================
+
+      setResult(
+        transformedResult,
+      );
+
+      setStatus('success');
+
+    } catch (error) {
+
+      /*
+       * Ignore results/errors from stale requests.
+       *
+       * Example:
+       *
+       * Scenario A starts
+       * ↓
+       * Scenario B selected
+       * ↓
+       * Scenario A fails
+       *
+       * Scenario A must not overwrite Scenario B.
+       */
+
+      if (runId !== evaluationRunRef.current) {
+        return;
+      }
+
+      console.error(
+        'Analyze error:',
+        error,
+      );
+
+      setResult(null);
+      setStatus('error');
     }
+  };
 
-    const data = JSON.parse(text);
-
-    console.log('Analyze data:', data);
-
-    // Transform backend response to frontend EvaluationResult format
-    const transformedResult = transformBackendResponse(data, useCase, response);
-
-    setResult(transformedResult);
-    setStatus('success');
-  } catch (error) {
-    console.error('Analyze error:', error);
-    setStatus('error');
-  }
-};
+  // ===========================================================
+  // GRID
+  // ===========================================================
 
   const compactGrid = compact
     ? 'grid items-start gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]'
     : 'space-y-6';
 
   return (
-    <div className={compact ? 'space-y-4' : 'space-y-6'}>
-      {/* =========================================================
+    <div
+      className={
+        compact
+          ? 'space-y-4'
+          : 'space-y-6'
+      }
+    >
+      {/* =======================================================
           PIPELINE INTRO
-      ========================================================= */}
+      ======================================================= */}
+
       <div className="grid gap-3 sm:grid-cols-3">
         <PipelineInfo
           number="01"
@@ -276,13 +686,15 @@ const handleEvaluate = async (
         />
       </div>
 
-      {/* =========================================================
+      {/* =======================================================
           MAIN WORKSPACE
-      ========================================================= */}
+      ======================================================= */}
+
       <div className={compactGrid}>
-        {/* =======================================================
+        {/* =====================================================
             INPUT PANEL
-        ======================================================= */}
+        ===================================================== */}
+
         <Card className="self-start overflow-hidden border-border/70 bg-card shadow-sm">
           <div className="border-b border-border/60 bg-muted/20 px-5 py-4">
             <div className="flex items-center gap-3">
@@ -305,18 +717,24 @@ const handleEvaluate = async (
           <CardContent className="p-5">
             <EvaluationInput
               onEvaluate={handleEvaluate}
-              isEvaluating={status === 'evaluating'}
+              onInputChange={handleInputChange}
+              isEvaluating={
+                status === 'evaluating'
+              }
             />
           </CardContent>
         </Card>
 
-        {/* =======================================================
+        {/* =====================================================
             RESULT PANEL
-        ======================================================= */}
+        ===================================================== */}
+
         <div className="min-w-0 self-start">
-          {/* -----------------------------------------------------
-              IDLE PREVIEW
-          ----------------------------------------------------- */}
+
+          {/* ===================================================
+              IDLE
+          =================================================== */}
+
           {status === 'idle' && !result && (
             <Card className="overflow-hidden border-border/70 bg-card shadow-sm">
               <div className="border-b border-border/60 bg-muted/20 px-5 py-4">
@@ -342,34 +760,26 @@ const handleEvaluate = async (
                   <EmptyState
                     title="No decision yet"
                     description="Submit an AI response to run the ControlPlane decision pipeline."
-                    icon={<FileSearch className="h-6 w-6" />}
+                    icon={
+                      <FileSearch className="h-6 w-6" />
+                    }
                   />
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <DecisionPlaceholder
-                    label="Risk"
-                  />
-
-                  <DecisionPlaceholder
-                    label="Evidence"
-                  />
-
-                  <DecisionPlaceholder
-                    label="Policy"
-                  />
-
-                  <DecisionPlaceholder
-                    label="Autonomy"
-                  />
+                  <DecisionPlaceholder label="Risk" />
+                  <DecisionPlaceholder label="Evidence" />
+                  <DecisionPlaceholder label="Policy" />
+                  <DecisionPlaceholder label="Autonomy" />
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* -----------------------------------------------------
+          {/* ===================================================
               EVALUATING
-          ----------------------------------------------------- */}
+          =================================================== */}
+
           {status === 'evaluating' && (
             <Card className="overflow-hidden border-border/70 bg-card shadow-sm">
               <div className="border-b border-border/60 bg-muted/20 px-5 py-4">
@@ -387,24 +797,58 @@ const handleEvaluate = async (
                   <EvaluationLoading />
 
                   <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                    Running context, risk, evidence, consequence and policy
-                    checks...
+                    Running context, risk, evidence,
+                    consequence and policy checks...
                   </p>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* -----------------------------------------------------
+          {/* ===================================================
+              ERROR
+          =================================================== */}
+
+          {status === 'error' && !result && (
+            <Card className="overflow-hidden border-border/70 bg-card shadow-sm">
+              <div className="border-b border-border/60 bg-muted/20 px-5 py-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-red-600 dark:text-red-400">
+                  Evaluation failed
+                </p>
+
+                <h3 className="mt-1 text-sm font-semibold text-foreground">
+                  Unable to complete evaluation
+                </h3>
+              </div>
+
+              <CardContent className="p-5">
+                <div className="rounded-xl border border-dashed border-border/70 bg-muted/[0.18] p-6">
+                  <EmptyState
+                    title="Evaluation unavailable"
+                    description="Please check that the backend is running and try again."
+                    icon={
+                      <ShieldCheck className="h-6 w-6" />
+                    }
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ===================================================
               SUCCESS
-          ----------------------------------------------------- */}
+          =================================================== */}
+
           {status === 'success' && result && (
             <div className="space-y-4 animate-fade-in">
+
               {/* =================================================
                   FINAL DECISION
               ================================================= */}
+
               <div className="overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm">
                 <div className="flex flex-col gap-2 border-b border-border/60 bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="h-4 w-4 text-emerald-500" />
 
@@ -422,7 +866,9 @@ const handleEvaluate = async (
                   <DecisionCard
                     decision={result.decision}
                     reason={result.reasoning[0]}
-                    evaluationId={result.evaluationId}
+                    evaluationId={
+                      result.evaluationId
+                    }
                   />
                 </div>
               </div>
@@ -430,6 +876,7 @@ const handleEvaluate = async (
               {/* =================================================
                   ACTIONS
               ================================================= */}
+
               <div className="flex flex-wrap gap-2">
                 <Button
                   asChild
@@ -460,6 +907,7 @@ const handleEvaluate = async (
               {/* =================================================
                   DECISION PIPELINE
               ================================================= */}
+
               <Card className="border-border/70 bg-card shadow-sm">
                 <CardContent className="p-5">
                   <DecisionPipeline
@@ -472,6 +920,7 @@ const handleEvaluate = async (
               {/* =================================================
                   RISK
               ================================================= */}
+
               <Card className="border-border/70 bg-card shadow-sm">
                 <CardContent className="p-5">
                   <RiskFingerprint
@@ -483,11 +932,16 @@ const handleEvaluate = async (
               {/* =================================================
                   EVIDENCE
               ================================================= */}
+
               <Card className="border-border/70 bg-card shadow-sm">
                 <CardContent className="p-5">
                   <EvidencePanel
-                    status={result.evidence.status}
-                    sources={result.evidence.sources}
+                    status={
+                      result.evidence.status
+                    }
+                    sources={
+                      result.evidence.sources
+                    }
                   />
                 </CardContent>
               </Card>
@@ -495,12 +949,18 @@ const handleEvaluate = async (
               {/* =================================================
                   CONSEQUENCE + POLICY
               ================================================= */}
+
               <div className="grid gap-4 sm:grid-cols-2">
+
                 <Card className="border-border/70 bg-card shadow-sm">
                   <CardContent className="p-5">
                     <ConsequencePanel
-                      level={result.consequence}
-                      impact={result.consequenceImpact}
+                      level={
+                        result.consequence
+                      }
+                      impact={
+                        result.consequenceImpact
+                      }
                     />
                   </CardContent>
                 </Card>
@@ -508,7 +968,9 @@ const handleEvaluate = async (
                 <Card className="border-border/70 bg-card shadow-sm">
                   <CardContent className="p-5">
                     <PolicySnapshotCard
-                      policy={result.policy}
+                      policy={
+                        result.policy
+                      }
                     />
                   </CardContent>
                 </Card>
@@ -517,11 +979,16 @@ const handleEvaluate = async (
               {/* =================================================
                   REASONING
               ================================================= */}
+
               <Card className="border-border/70 bg-card shadow-sm">
                 <CardContent className="p-5">
                   <DecisionReasoningPanel
-                    decision={result.decision}
-                    reasoning={result.reasoning}
+                    decision={
+                      result.decision
+                    }
+                    reasoning={
+                      result.reasoning
+                    }
                     result={result}
                   />
                 </CardContent>
@@ -553,6 +1020,7 @@ function PipelineInfo({
     <div
       className={[
         'flex items-center gap-3 rounded-lg border px-4 py-3 transition-colors',
+
         active
           ? 'border-blue-200 bg-blue-50/50 dark:border-blue-400/20 dark:bg-blue-400/[0.05]'
           : 'border-border/60 bg-card/60',
@@ -561,6 +1029,7 @@ function PipelineInfo({
       <div
         className={[
           'flex h-7 w-7 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-semibold',
+
           active
             ? 'bg-blue-600 text-white'
             : 'bg-muted text-muted-foreground',
