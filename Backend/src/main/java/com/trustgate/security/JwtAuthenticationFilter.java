@@ -108,6 +108,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     "JWT FILTER ERROR: " + e.getClass().getSimpleName()
                             + " - " + e.getMessage()
             );
+
+            // Invalid/expired token: reject with 401 instead of
+            // silently continuing as anonymous.
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("Invalid or expired JWT token");
+            return;
         }
 
         filterChain.doFilter(request, response);
