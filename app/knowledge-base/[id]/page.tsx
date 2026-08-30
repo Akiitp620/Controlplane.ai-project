@@ -2,67 +2,195 @@
 
 import * as React from 'react';
 import { useParams, useRouter } from 'next/navigation';
+
 import { PageHeader } from '@/components/layout/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/common/error-state';
 import { LoadingState } from '@/components/common/loading-state';
 import { Button } from '@/components/ui/button';
-import type { KnowledgeDocument } from '@/types';
+
 import {
   ArrowLeft,
-  FileText,
   BookOpen,
+  FileText,
   GitBranch,
+  Database,
+  ShieldCheck,
+  Clock3,
 } from 'lucide-react';
+
+/* -------------------------------------------------------------------------- */
+/* Backend contract                                                           */
+/* -------------------------------------------------------------------------- */
+
+type BackendDocument = {
+  id: number;
+  name: string;
+  documentType?: string;
+  description?: string;
+  source?: string;
+  createdAt?: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* UI model                                                                   */
+/* -------------------------------------------------------------------------- */
+
+type DocumentViewModel = {
+  id: string;
+  name: string;
+  documentType: string;
+  description: string;
+  source: string;
+  createdAt: string;
+};
+
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
 
 export default function KnowledgeDocumentPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const [doc, setDoc] = React.useState<KnowledgeDocument | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+
+  const [document, setDocument] =
+    React.useState<DocumentViewModel | null>(null);
+
+  const [loading, setLoading] =
+    React.useState(true);
+
+  const [error, setError] =
+    React.useState<string | null>(null);
+
+  /* ------------------------------------------------------------------------ */
+  /* Fetch document                                                           */
+  /* ------------------------------------------------------------------------ */
 
   React.useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
-    const token = window.localStorage.getItem('token');
-    fetch(`${apiUrl}/api/documents`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Unable to load document.');
-        const documents = await response.json();
-        const backendDoc = documents.find((item: { id: number }) => String(item.id) === params.id);
-        if (!backendDoc) return;
-        setDoc({
-          id: String(backendDoc.id),
-          name: backendDoc.name,
-          version: '1.0',
-          source: backendDoc.source ?? 'Backend document store',
-          lastUpdated: backendDoc.createdAt ?? '',
-          status: 'INDEXED',
-          category: backendDoc.documentType ?? 'General',
-          sections: [{ id: `${backendDoc.id}-summary`, title: 'Summary', content: backendDoc.description ?? 'No description provided.' }],
-          usedInEvaluations: 0,
-        });
-      })
-      .catch((requestError: Error) => setError(requestError.message))
-      .finally(() => setLoading(false));
+    let mounted = true;
+
+    const fetchDocument = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const token =
+          window.localStorage.getItem('token');
+
+        const headers: HeadersInit = token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : {};
+
+        const response = await fetch(
+          `${API_URL}/api/documents`,
+          {
+            headers,
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `Unable to load documents (${response.status}).`,
+          );
+        }
+
+        const documents =
+          (await response.json()) as BackendDocument[];
+
+        const backendDocument = documents.find(
+          (item) =>
+            String(item.id) === String(params.id),
+        );
+
+        if (!backendDocument) {
+          throw new Error(
+            `Document "${params.id}" does not exist.`,
+          );
+        }
+
+        const normalizedDocument: DocumentViewModel = {
+          id: String(backendDocument.id),
+          name: backendDocument.name,
+          documentType:
+            backendDocument.documentType ??
+            'GENERAL',
+          description:
+            backendDocument.description?.trim() ??
+            'No document content or description is available.',
+          source:
+            backendDocument.source ??
+            'Backend document store',
+          createdAt:
+            backendDocument.createdAt ??
+            '',
+        };
+
+        if (!mounted) return;
+
+        setDocument(normalizedDocument);
+      } catch (requestError) {
+        if (!mounted) return;
+
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Unable to load document.',
+        );
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchDocument();
+
+    return () => {
+      mounted = false;
+    };
   }, [params.id]);
 
-  if (loading) return <LoadingState />;
-  if (error) return <ErrorState title="Document unavailable" description={error} />;
+  /* ------------------------------------------------------------------------ */
+  /* Render states                                                             */
+  /* ------------------------------------------------------------------------ */
 
-  if (!doc) {
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  if (error || !document) {
     return (
       <div className="space-y-6">
-        <Button variant="ghost" size="sm" onClick={() => router.back()}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.back()}
+        >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back
         </Button>
+
         <ErrorState
-          title="Document not found"
-          description={`Document "${params.id}" does not exist.`}
+          title="Document unavailable"
+          description={
+            error ??
+            `Document "${params.id}" does not exist.`
+          }
         />
       </div>
     );
@@ -70,121 +198,251 @@ export default function KnowledgeDocumentPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" onClick={() => router.back()}>
+      {/* -------------------------------------------------------------------- */}
+      {/* Back navigation                                                       */}
+      {/* -------------------------------------------------------------------- */}
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => router.back()}
+      >
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back
       </Button>
 
+      {/* -------------------------------------------------------------------- */}
+      {/* Header                                                                */}
+      {/* -------------------------------------------------------------------- */}
+
       <PageHeader
-        title={doc.name}
-        description={`${doc.source} · ${doc.category}`}
+        title={document.name}
+        description={`${document.source} · ${document.documentType}`}
         badge={
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              v{doc.version}
-            </Badge>
+          <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant="outline"
-              className={
-                doc.status === 'INDEXED'
-                  ? 'border-success/30 bg-success/10 text-success text-xs'
-                  : 'text-xs text-muted-foreground'
-              }
+              className="text-xs"
             >
-              {doc.status}
+              v1.0
             </Badge>
-            <Badge variant="outline" className="text-xs text-muted-foreground">
-              Updated {doc.lastUpdated}
+
+            <Badge
+              variant="outline"
+              className="border-success/30 bg-success/10 text-success text-xs"
+            >
+              INDEXED
             </Badge>
           </div>
         }
       />
 
+      {/* -------------------------------------------------------------------- */}
+      {/* Overview                                                              */}
+      {/* -------------------------------------------------------------------- */}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <InfoCard
+          icon={FileText}
+          label="Document Type"
+          value={document.documentType}
+        />
+
+        <InfoCard
+          icon={Database}
+          label="Source"
+          value={document.source}
+        />
+
+        <InfoCard
+          icon={ShieldCheck}
+          label="Index Status"
+          value="INDEXED"
+        />
+
+        <InfoCard
+          icon={Clock3}
+          label="Created"
+          value={formatDate(document.createdAt)}
+        />
+      </div>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* Document content                                                       */}
+      {/* -------------------------------------------------------------------- */}
+
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <FileText className="h-5 w-5 text-primary" />
+              <BookOpen className="h-5 w-5 text-primary" />
             </div>
+
             <div>
-              <CardTitle className="text-base">Document Overview</CardTitle>
-              <p className="text-xs text-muted-foreground">
-                Used in {doc.usedInEvaluations} evaluations
+              <CardTitle className="text-base">
+                Indexed Content
+              </CardTitle>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Content available to the evidence retrieval
+                layer.
               </p>
             </div>
           </div>
         </CardHeader>
+
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <div className="text-xs text-muted-foreground">Source</div>
-              <div className="text-sm font-medium">{doc.source}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Category</div>
-              <div className="text-sm font-medium">{doc.category}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Version</div>
-              <div className="text-sm font-medium">v{doc.version}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Last Updated</div>
-              <div className="text-sm font-medium">{doc.lastUpdated}</div>
-            </div>
+          <div className="rounded-lg border border-border bg-muted/20 p-5">
+            <p className="whitespace-pre-wrap text-sm leading-7 text-foreground/80">
+              {document.description}
+            </p>
           </div>
         </CardContent>
       </Card>
 
+      {/* -------------------------------------------------------------------- */}
+      {/* Retrieval information                                                  */}
+      {/* -------------------------------------------------------------------- */}
+
       <Card>
         <CardHeader>
-          <div className="flex items-center gap-3">
-            <BookOpen className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Indexed Sections</CardTitle>
-          </div>
+          <CardTitle className="text-base">
+            Retrieval & Verification
+          </CardTitle>
         </CardHeader>
+
+        <CardContent className="space-y-4">
+          <p className="text-sm leading-6 text-muted-foreground">
+            This document is available to ControlPlane&apos;s
+            evidence retrieval layer. During an AI evaluation,
+            relevant indexed content can be retrieved and used
+            as supporting evidence for the governance decision.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <RetrievalItem
+              label="Vector Index"
+              value="Available"
+            />
+
+            <RetrievalItem
+              label="Document ID"
+              value={document.id}
+            />
+
+            <RetrievalItem
+              label="Status"
+              value="Ready"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* -------------------------------------------------------------------- */}
+      {/* Governance usage                                                      */}
+      {/* -------------------------------------------------------------------- */}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">
+            Governance Role
+          </CardTitle>
+        </CardHeader>
+
         <CardContent>
-          <div className="space-y-4">
-            {doc.sections.map((section) => (
-              <div
-                key={section.id}
-                className="rounded-lg border border-border p-4"
-              >
-                <div className="flex items-center gap-2">
-                  <GitBranch className="h-4 w-4 text-muted-foreground" />
-                  <h4 className="text-sm font-semibold text-foreground">
-                    {section.title}
-                  </h4>
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {section.content}
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex items-start gap-3">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Evidence source for AI evaluation
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  ControlPlane can use this indexed document
+                  as trusted context when evaluating AI
+                  responses and determining whether a decision
+                  should be allowed, modified, escalated, or
+                  blocked.
                 </p>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Retrieval & Verification</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            This document is indexed for RAG-based evidence verification.
-            When an AI response is evaluated, ControlPlane retrieves relevant
-            passages from this document to verify or contradict claims made by
-            the AI. This makes the evidence verification process transparent
-            and auditable.
-          </p>
-          <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 p-3">
-            <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              Simulated document — content is sample data for prototype demonstration.
-            </span>
+            </div>
           </div>
         </CardContent>
       </Card>
     </div>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Small reusable components                                                   */
+/* -------------------------------------------------------------------------- */
+
+function InfoCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{
+    className?: string;
+  }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted">
+            <Icon className="h-4 w-4 text-muted-foreground" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="text-xs text-muted-foreground">
+              {label}
+            </div>
+
+            <div className="truncate text-sm font-semibold text-foreground">
+              {value}
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RetrievalItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background p-4">
+      <div className="text-xs text-muted-foreground">
+        {label}
+      </div>
+
+      <div className="mt-1 text-sm font-medium text-foreground">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function formatDate(value: string) {
+  if (!value) {
+    return 'Not available';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
 }
