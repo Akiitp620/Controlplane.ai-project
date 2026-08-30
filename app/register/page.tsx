@@ -27,6 +27,8 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError('');
@@ -56,7 +58,7 @@ export default function RegisterPage() {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`,
+        `${apiUrl}/api/auth/register`,
         {
           method: 'POST',
           headers: {
@@ -86,8 +88,16 @@ export default function RegisterPage() {
       }
 
       if (!response.ok) {
+        // Never render raw HTML (e.g. a Next.js 404 error page) as an error
+        // message. If the response isn't JSON, show a clean message instead.
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(
+            `Registration failed (${response.status}). Is the backend running at ${apiUrl}?`
+          );
+        }
         throw new Error(
-          data?.message || text || `Registration failed (${response.status})`
+          data?.message || `Registration failed (${response.status})`
         );
       }
 
@@ -95,7 +105,12 @@ export default function RegisterPage() {
         throw new Error('Backend returned an empty response');
       }
 
-      window.location.href = '/login';
+      // Registration returns a JWT token — store it and go straight
+      // to the dashboard instead of forcing an extra login step.
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data));
+
+      window.location.href = '/dashboard';
     } catch (error) {
       console.error('Registration error:', error);
 
