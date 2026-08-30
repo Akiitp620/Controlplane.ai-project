@@ -5,8 +5,10 @@ import com.trustgate.dto.request.RegisterRequest;
 import com.trustgate.dto.response.AuthResponse;
 import com.trustgate.model.User;
 import com.trustgate.repository.UserRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AuthService {
@@ -30,7 +32,10 @@ public class AuthService {
         String email = request.getEmail().trim().toLowerCase();
 
         if (userRepository.findByEmail(email).isPresent()) {
-            throw new RuntimeException("Email already registered");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Email already registered"
+            );
         }
 
         User user = new User();
@@ -66,16 +71,25 @@ public class AuthService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() ->
-                        new RuntimeException("Invalid email or password"));
+                        new ResponseStatusException(
+                                HttpStatus.UNAUTHORIZED,
+                                "Invalid email or password"
+                        ));
 
         System.out.println("LOGIN USER FOUND: " + user.getEmail());
 
         if (!Boolean.TRUE.equals(user.getActive())) {
-            throw new RuntimeException("User account is inactive");
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "User account is inactive"
+            );
         }
 
         if (user.getPassword() == null) {
-            throw new RuntimeException("User password is not configured");
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "User password is not configured"
+            );
         }
 
         if (!passwordEncoder.matches(
@@ -83,7 +97,10 @@ public class AuthService {
                 user.getPassword()
         )) {
             System.out.println("LOGIN PASSWORD MATCH: false");
-            throw new RuntimeException("Invalid email or password");
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Invalid email or password"
+            );
         }
 
         System.out.println("LOGIN PASSWORD MATCH: true");
