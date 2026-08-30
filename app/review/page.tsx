@@ -56,13 +56,24 @@ export default function ReviewPage() {
   const handleAction = async (review: BackendReview, action: 'approve' | 'reject' | 'modify') => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
     const token = window.localStorage.getItem('token');
+    const comments = reasons[String(review.id)]?.trim();
+    // The backend modify endpoint reads `modifiedResponse` (not `comments`)
+    // to update the passport's final response. For approve/reject, only
+    // comments are needed.
+    const body =
+      action === 'modify'
+        ? JSON.stringify({
+            modifiedResponse: comments || 'Response modified by reviewer.',
+            comments,
+          })
+        : JSON.stringify({ comments });
     const response = await fetch(`${apiUrl}/api/human-reviews/${review.id}/${action}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ comments: reasons[String(review.id)]?.trim() }),
+      body,
     });
     if (!response.ok) {
       setError(`Unable to ${action} review.`);
@@ -231,7 +242,7 @@ export default function ReviewPage() {
                       Override
                     </Button>
                     <Button asChild size="sm" variant="ghost" className="ml-auto">
-                      <Link href={`/evaluate/${review.riskAssessmentId}`}>
+                      <Link href={`/evaluate/EVAL-${review.riskAssessmentId}`}>
                         <FileSearch className="mr-2 h-4 w-4" />
                         View Detail
                       </Link>
