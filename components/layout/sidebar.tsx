@@ -12,13 +12,13 @@ import {
   History,
   BarChart3,
   ShieldCheck,
+  LockKeyhole,
   PanelLeftClose,
   PanelLeft,
   CircleDot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { getPendingReviews } from '@/lib/mock-data';
 
 interface NavItem {
   label: string;
@@ -30,6 +30,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Evaluate', href: '/evaluate', icon: FileSearch },
+  { label: 'Action Gate', href: '/action-gate', icon: LockKeyhole },
   { label: 'Use Cases', href: '/use-cases', icon: Briefcase },
   { label: 'Policies', href: '/policies', icon: ScrollText },
   { label: 'Knowledge Base', href: '/knowledge-base', icon: BookOpen },
@@ -48,7 +49,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [pendingCount, setPendingCount] = React.useState(0);
 
   React.useEffect(() => {
-    setPendingCount(getPendingReviews().length);
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const token = window.localStorage.getItem('token');
+
+    fetch(`${apiUrl}/api/human-reviews`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data: { status: string }[] = await response.json();
+        setPendingCount(
+          data.filter((review) => review.status === 'PENDING').length,
+        );
+      })
+      .catch(() => {
+        // Non-fatal: badge just stays at 0 if the backend is unavailable.
+      });
   }, []);
 
   return (
