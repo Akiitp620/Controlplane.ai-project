@@ -42,7 +42,26 @@ public class AuditController {
     private AuditResponse toResponse(RiskAssessment assessment) {
         // Generate a consistent evaluation ID based on the assessment ID and creation time
         String evaluationId = "EVAL-" + assessment.getId();
-        
+
+        // Derive the use case from the linked application type.
+        // The frontend expects a UseCaseId (customer_support, knowledge_assistant,
+        // decision_support, agent_action), not the raw application type.
+        String useCase = "customer_support";
+        if (assessment.getResponse() != null
+                && assessment.getResponse().getRequest() != null
+                && assessment.getResponse().getRequest().getApplication() != null) {
+            String appType = assessment.getResponse().getRequest().getApplication().getType();
+            if (appType != null) {
+                useCase = switch (appType.toUpperCase()) {
+                    case "DECISION_SUPPORT" -> "decision_support";
+                    case "KNOWLEDGE_ASSISTANT" -> "knowledge_assistant";
+                    case "AGENT_ACTION" -> "agent_action";
+                    case "CUSTOMER_SUPPORT" -> "customer_support";
+                    default -> "customer_support";
+                };
+            }
+        }
+
         // Determine risk level from overall risk score
         String riskLevel = "MEDIUM";
         if (assessment.getOverallRiskScore() != null) {
@@ -87,7 +106,7 @@ public class AuditController {
                 decision,
                 riskLevel,
                 "Default Policy v1",
-                "general",
+                useCase,
                 assessment.getHallucinationScore() != null ? assessment.getHallucinationScore() : 0,
                 assessment.getPrivacyScore() != null ? assessment.getPrivacyScore() : 0,
                 assessment.getBiasScore() != null ? assessment.getBiasScore() : 0,
