@@ -22,77 +22,87 @@ export default function LoginPage() {
  const [loading, setLoading] = useState(false);
  const [error, setError] = useState('');
 
- const [email, setEmail] = useState('');
- const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
-const handleSubmit = async (
-  event: React.FormEvent<HTMLFormElement>,
-) => {
-  event.preventDefault();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
-  if (!email.trim() || !password.trim()) {
-    return;
-  }
+  const handleSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
 
-  setLoading(true);
-  setError('');
-
-  try {
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/auth/login`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      }
-    );
-
-    const text = await response.text();
-
-    console.log('Login status:', response.status);
-    console.log('Login response:', text);
-
-    let data = null;
-
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = null;
-      }
+    if (!email.trim() || !password.trim()) {
+      return;
     }
 
-    if (!response.ok) {
-      throw new Error(
-        data?.message || text || `Login failed (${response.status})`
+    setLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `${apiUrl}/api/auth/login`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email,
+            password,
+          }),
+        }
       );
+
+      const text = await response.text();
+
+      console.log('Login status:', response.status);
+      console.log('Login response:', text);
+
+      let data = null;
+
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+      }
+
+      if (!response.ok) {
+        // Never render raw HTML (e.g. a Next.js 404 error page) as an error
+        // message. If the response isn't JSON, show a clean message instead.
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error(
+            `Login failed (${response.status}). Is the backend running at ${apiUrl}?`
+          );
+        }
+        throw new Error(
+          data?.message || `Login failed (${response.status})`
+        );
+      }
+
+      if (!data) {
+        throw new Error('Backend returned an empty response');
+      }
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data));
+
+      window.location.href = '/dashboard';
+    } catch (error) {
+      console.error('Login error:', error);
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to login'
+      );
+    } finally {
+      setLoading(false);
     }
-
-    if (!data) {
-      throw new Error('Backend returned an empty response');
-    }
-
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data));
-
-    window.location.href = '/dashboard';
-  } catch (error) {
-    console.error('Login error:', error);
-
-    setError(
-      error instanceof Error
-        ? error.message
-        : 'Unable to login'
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#05070b] text-white selection:bg-blue-500/30">
