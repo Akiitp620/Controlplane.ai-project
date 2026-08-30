@@ -97,6 +97,7 @@ public class SecurityConfig {
                 List.of(
                         "http://localhost:3000",
                         "http://localhost:3001",
+                        "http://localhost:3002",
                         "https://controlplane.ai",
                         "https://controlplane-ai.netlify.app"
                 )
