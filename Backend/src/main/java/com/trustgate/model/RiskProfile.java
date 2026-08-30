@@ -19,7 +19,7 @@ public class RiskProfile {
     private Application application;
 
     @Column(name = "risk_tolerance", nullable = false)
-    private String RiskTolerance;
+    private String riskTolerance;
 
     @Column(name = "hallucination_threshold")
     private Integer hallucinationThreshold = 60;
