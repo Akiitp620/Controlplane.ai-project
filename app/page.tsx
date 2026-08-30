@@ -142,7 +142,7 @@ export default function Home() {
             </Link>
 
             <Link
-              href="/dashboard"
+              href="/login"
               className="group inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition-all hover:bg-blue-50"
             >
               Launch ControlPlane
@@ -200,7 +200,7 @@ export default function Home() {
 
               <div className="mt-9 flex flex-wrap items-center gap-3">
                 <Link
-                  href="/dashboard"
+                  href="/login"
                   className="group inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold shadow-xl shadow-blue-600/20 transition-all hover:-translate-y-0.5 hover:bg-blue-500"
                 >
                   See ControlPlane in action
@@ -516,7 +516,7 @@ export default function Home() {
               </p>
 
               <Link
-                href="/dashboard"
+                href="/login"
                 className="group mt-8 inline-flex items-center gap-2 text-sm font-semibold text-blue-400 transition-colors hover:text-blue-300"
               >
                 Open the ControlPlane dashboard
@@ -703,7 +703,7 @@ export default function Home() {
           </p>
 
           <Link
-            href="/dashboard"
+            href="/login"
             className="group mt-9 inline-flex items-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-semibold text-slate-950 transition-all hover:-translate-y-0.5 hover:bg-blue-50"
           >
             Launch ControlPlane
