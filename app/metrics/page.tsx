@@ -42,7 +42,7 @@ const riskColors: Record<string, string> = {
   LOW: 'hsl(var(--success))',
   MEDIUM: 'hsl(var(--warning))',
   HIGH: 'hsl(var(--review))',
-  CRITICAL: 'hsl(var(--destructive))',
+  
 };
 
 export default function MetricsPage() {
@@ -92,7 +92,7 @@ export default function MetricsPage() {
       { risk: 'LOW', count: data.lowRiskCount },
       { risk: 'MEDIUM', count: data.mediumRiskCount },
       { risk: 'HIGH', count: data.highRiskCount },
-      { risk: 'CRITICAL', count: Math.max(0, data.totalEvaluations - data.lowRiskCount - data.mediumRiskCount - data.highRiskCount) },
+     
     ],
     evaluationVolume: [
       { time: 'All', count: data.totalEvaluations },
