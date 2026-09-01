@@ -1,16 +1,17 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
-import { EvaluationWorkspace } from '@/components/evaluation/evaluation-workspace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Activity,
+  ArrowRight,
   Gauge,
   ShieldAlert,
   ShieldX,
-  Sparkles,
   Waypoints,
 } from 'lucide-react';
 import { ErrorState } from '@/components/common/error-state';
@@ -24,34 +25,73 @@ interface DashboardMetrics {
 }
 
 export default function DashboardPage() {
-  const [metrics, setMetrics] = React.useState<DashboardMetrics | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  const [metrics, setMetrics] =
+    React.useState<DashboardMetrics | null>(null);
+
+  const [error, setError] =
+    React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+    const apiUrl =
+      process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
     const token = window.localStorage.getItem('token');
 
-    fetch(`${apiUrl}/api/metrics/dashboard`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-      .then(async (response) => {
+    const controller = new AbortController();
+
+    const loadDashboardMetrics = async () => {
+      try {
+        const response = await fetch(
+          `${apiUrl}/api/metrics/dashboard`,
+          {
+            headers: token
+              ? { Authorization: `Bearer ${token}` }
+              : {},
+            signal: controller.signal,
+            cache: 'no-store',
+          }
+        );
+
         if (!response.ok) {
-          throw new Error('Unable to load dashboard metrics.');
+          throw new Error(
+            'Unable to load dashboard metrics.'
+          );
         }
 
         const data = await response.json();
+
         setMetrics({
           totalEvaluations: data.totalEvaluations ?? 0,
           reviewDecisions: data.reviewDecisions ?? 0,
           blockedDecisions: data.blockedDecisions ?? 0,
           averageRiskScore: data.averageRiskScore ?? 0,
         });
-      })
-      .catch((requestError: Error) => setError(requestError.message));
+      } catch (requestError) {
+        if (requestError instanceof DOMException &&
+            requestError.name === 'AbortError') {
+          return;
+        }
+
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Unable to load dashboard metrics.'
+        );
+      }
+    };
+
+    loadDashboardMetrics();
+
+    return () => controller.abort();
   }, []);
 
   if (error) {
-    return <ErrorState title="Dashboard unavailable" description={error} />;
+    return (
+      <ErrorState
+        title="Dashboard unavailable"
+        description={error}
+      />
+    );
   }
 
   if (!metrics) {
@@ -216,14 +256,14 @@ export default function DashboardPage() {
       </section>
 
       {/* =========================================================
-          DECISION ENGINE
+          EVALUATION ENTRY POINT
       ========================================================= */}
-      <section className="space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+      <section className="rounded-xl border border-border/70 bg-card/60 shadow-sm">
+        <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <div className="mb-2 flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400">
-                <Sparkles className="h-3.5 w-3.5" />
+                <Waypoints className="h-3.5 w-3.5" />
               </div>
 
               <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-blue-600 dark:text-blue-400">
@@ -231,23 +271,23 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            <h2 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-              Evaluate an AI response
+            <h2 className="text-base font-semibold tracking-tight text-foreground sm:text-lg">
+              Ready to evaluate an AI response?
             </h2>
 
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Run a response through the control pipeline and determine the
-              appropriate level of autonomy.
+              Run a response through the full ControlPlane decision pipeline
+              in the dedicated evaluation workspace.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-300">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Evaluation Engine Ready
-          </div>
+          <Button asChild className="shrink-0">
+            <Link href="/evaluate">
+              Open Evaluation
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
         </div>
-
-        <EvaluationWorkspace compact />
       </section>
 
       {/* =========================================================
